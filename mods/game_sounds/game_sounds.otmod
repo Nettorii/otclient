@@ -1,0 +1,10 @@
+Module
+  name: game_sounds
+  description: Plays the server's sound effects (spells, hits, doors...) from the client's sound files
+  author: local
+  sandboxed: true
+  scripts: [ game_sounds ]
+  autoload: true
+  autoload-priority: 1000
+  @onLoad: init()
+  @onUnload: terminate()

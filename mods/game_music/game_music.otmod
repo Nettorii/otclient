@@ -1,0 +1,10 @@
+Module
+  name: game_music
+  description: Plays the client's music tracks while in game (the server protocol music packets are not implemented by OTClient)
+  author: local
+  sandboxed: true
+  scripts: [ game_music ]
+  autoload: true
+  autoload-priority: 999
+  @onLoad: init()
+  @onUnload: terminate()
