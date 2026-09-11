@@ -228,6 +228,26 @@ return {
             panels.soundPanel:recursiveGetChildById('musicSoundVolume'):setText(tr('Music volume: %d', value))
         end
     },
+    footstepSounds                    = {
+        value = true,
+        action = function(value, options, controller, panels, extraWidgets)
+            g_settings.set('footstepSounds', value)
+        end
+    },
+    soundEffectsVolume                = {
+        value = 100,
+        action = function(value, options, controller, panels, extraWidgets)
+            g_settings.set('soundEffectsVolume', value)
+            panels.soundPanel:recursiveGetChildById('soundEffectsVolume'):setText(tr('Sound effects volume: %d', value))
+        end
+    },
+    ambientVolume                     = {
+        value = 20,
+        action = function(value, options, controller, panels, extraWidgets)
+            g_settings.set('ambientVolume', value)
+            panels.soundPanel:recursiveGetChildById('ambientVolume'):setText(tr('Ambience volume (fire, water...): %d', value))
+        end
+    },
     enableLights                      = {
         value = true,
         action = function(value, options, controller, panels, extraWidgets)

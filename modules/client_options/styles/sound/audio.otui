@@ -34,3 +34,36 @@ UIWidget
       @onSetup: |
         local value = modules.client_options.getOption('musicSoundVolume')
         self:setText(tr('Music volume: %d', value))
+
+    OptionCheckBox
+      id: footstepSounds
+      margin-top: 8
+      anchors.top: prev.bottom
+      anchors.left: parent.left
+      !text: tr('Footstep sounds')
+
+    OptionScaleScroll
+      id: soundEffectsVolume
+      margin-top: 5
+      anchors.top: prev.bottom
+      anchors.left: parent.left
+      anchors.right: parent.right
+      &minimumScrollValue: 0
+      &maximumScrollValue: 100
+      &scrollSize: 21
+      @onSetup: |
+        local value = modules.client_options.getOption('soundEffectsVolume')
+        self:setText(tr('Sound effects volume: %d', value))
+
+    OptionScaleScroll
+      id: ambientVolume
+      margin-top: 5
+      anchors.top: prev.bottom
+      anchors.left: parent.left
+      anchors.right: parent.right
+      &minimumScrollValue: 0
+      &maximumScrollValue: 100
+      &scrollSize: 21
+      @onSetup: |
+        local value = modules.client_options.getOption('ambientVolume')
+        self:setText(tr('Ambience volume (fire, water...): %d', value))

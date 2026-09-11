@@ -43,6 +43,9 @@ public:
     void stop() override;
 
     bool isPlaying() override { return m_playing; }
+    // Streams loop by rewinding the file in fillBufferAndQueue(); never set
+    // AL_LOOPING on a queued source (OpenAL then refuses to unqueue buffers).
+    void setLooping(const bool looping) override { m_looping = looping; }
 
     void setSoundFile(const SoundFilePtr& soundFile);
 

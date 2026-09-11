@@ -181,6 +181,7 @@ bool StreamSoundSource::fillBufferAndQueue(const uint32_t buffer)
             }
         }
 
+        alGetError(); // clear any stale error so the check below is ours
         alBufferData(buffer, format, bufferData.data(), bytesRead, m_soundFile->getRate());
         ALenum err = alGetError();
         if (err != AL_NO_ERROR)

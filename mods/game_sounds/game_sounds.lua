@@ -19,8 +19,49 @@
 local effectChannel
 local ambientChannel
 local lastPlayed = {}
-local MIN_INTERVAL_MS = 60
+local MIN_INTERVAL_MS = 150
 local MAX_DISTANCE = 9
+
+-- The official effect files are mastered to full scale (peak 1.0), much
+-- hotter than the music, and several monsters roaring at once simply add up
+-- and clip. MASTER keeps a single effect below the music, TYPE_LEVEL trims
+-- categories further, and the limiter below lowers the gain of every new
+-- effect while many others are still sounding.
+local MASTER = 0.55
+local TYPE_LEVEL = {
+    [1] = 0.9,  -- spell attack
+    [2] = 0.8,  -- spell healing
+    [3] = 0.8,  -- spell support
+    [4] = 0.8,  -- weapon attack / hits
+    [5] = 0.6,  -- creature noise
+    [6] = 0.7,  -- creature death
+    [7] = 0.7,  -- creature attack
+    [8] = 0.7,  -- ambience stream (footsteps live here too)
+    [9] = 0.8,  -- food and drink
+    [10] = 0.8, -- item movement
+    [11] = 0.6, -- event (level up ...)
+    [12] = 0.7, -- ui
+}
+local recentPlays = {}      -- timestamps of recent effect starts
+local LIMITER_WINDOW_MS = 600
+local MAX_CONCURRENT = 8
+
+local function limiterGain(now)
+    local kept, n = {}, 0
+    for _, t in ipairs(recentPlays) do
+        if now - t < LIMITER_WINDOW_MS then
+            n = n + 1
+            kept[n] = t
+        end
+    end
+    recentPlays = kept
+    if n >= MAX_CONCURRENT then
+        return nil -- too many already sounding: drop this one
+    end
+    recentPlays[n + 1] = now
+    -- 1st effect full, 2nd ~0.71, 4th 0.5, 8th ~0.35
+    return 1 / math.sqrt(n + 1)
+end
 
 local function soundDirectory()
     local version = g_game.getClientVersion()
@@ -30,11 +71,20 @@ local function soundDirectory()
     return string.format('/data/sounds/%d/', version)
 end
 
-local function volume()
-    local v = g_settings.getNumber('soundEffectsVolume', 100)
+local function clampPercent(v)
     if not v or v < 0 then v = 0 end
     if v > 100 then v = 100 end
     return v / 100
+end
+
+local function volume()
+    return clampPercent(g_settings.getNumber('soundEffectsVolume', 100))
+end
+
+-- Ambience (fire crackle from torches, waterfalls ...) is background noise:
+-- keep it well below the effects. ambientVolume 0-100, default 20.
+local function ambientVolume()
+    return clampPercent(g_settings.getNumber('ambientVolume', 20))
 end
 
 local function debug(msg)
@@ -84,8 +134,21 @@ local function playEffect(effectId, gainFactor)
         debug('no file for effect ' .. tostring(effectId))
         return false
     end
-    effectChannel:play(path, 0, gain * (gainFactor or 1) * volume(), pitch)
-    debug(string.format('effect %d -> %s gain=%.2f pitch=%.2f', effectId, path, gain * (gainFactor or 1), pitch))
+    local effectType = g_sounds.getSoundEffectType and g_sounds.getSoundEffectType(effectId) or 0
+    local typeLevel = TYPE_LEVEL[effectType] or 0.8
+    local limit = limiterGain(g_clock.millis())
+    if not limit then
+        debug('limiter dropped effect ' .. tostring(effectId))
+        return false
+    end
+    local finalGain = gain * (gainFactor or 1) * volume() * MASTER * typeLevel * limit
+    if finalGain <= 0 then
+        return false -- g_sounds.play treats gain 0 as "full volume"
+    end
+    -- Independent source per effect: SoundChannel:play() would stop whatever
+    -- is still playing on the channel, which makes overlapping effects click.
+    g_sounds.play(path, 0, finalGain, pitch)
+    debug(string.format('effect %d (type %d) -> %s gain=%.2f pitch=%.2f', effectId, effectType, path, finalGain, pitch))
     return true
 end
 
@@ -134,7 +197,6 @@ local SOUND = {
     VIP_LOGOUT = 2806,
 }
 
-local lastStepAt = 0
 local function footstepFor(player)
     local outfit = player:getOutfit()
     if outfit and outfit.mount and outfit.mount > 0 then
@@ -158,19 +220,69 @@ local function footstepFor(player)
     return SOUND.FOOTSTEPS_SLOW
 end
 
+-- The footstep audio files are ~5 s walking loops (several steps each), not
+-- single steps: keep one looping source alive while the player is walking
+-- and stop it shortly after the last step. Restarting it on every step is
+-- what produced the crackling.
+local footstep = { source = nil, effectId = nil, lastStep = 0 }
+
+local function stopFootsteps()
+    if footstep.source then
+        footstep.source:stop()
+    end
+    footstep.source, footstep.effectId = nil, nil
+end
+
 local function onLocalWalk(player, newPos, oldPos)
-    if not g_settings.getBoolean('footstepSounds', true) then
+    if not g_settings.getBoolean('footstepSounds', true) or not g_sounds.isAudioEnabled() then
+        stopFootsteps()
         return
     end
-    if not oldPos or not newPos or (oldPos.x == newPos.x and oldPos.y == newPos.y and oldPos.z == newPos.z) then
+    if not oldPos or not newPos or oldPos.z ~= newPos.z then
         return
     end
+    local dx, dy = math.abs(oldPos.x - newPos.x), math.abs(oldPos.y - newPos.y)
+    if (dx == 0 and dy == 0) or dx > 1 or dy > 1 then
+        return -- no move, or a teleport
+    end
+    footstep.lastStep = g_clock.millis()
+    local effectId = footstepFor(player)
+    if footstep.source and footstep.effectId == effectId and footstep.source:isPlaying() then
+        return
+    end
+    stopFootsteps()
+    local path, gain, pitch = resolveEffect(effectId)
+    if not path then
+        return
+    end
+    local finalGain = gain * 0.9 * volume() * MASTER
+    if finalGain <= 0 then
+        return
+    end
+    local source = g_sounds.play(path, 0, finalGain, pitch)
+    if source then
+        source:setLooping(true)
+        footstep.source, footstep.effectId = source, effectId
+        debug(string.format('footsteps %d -> %s gain=%.2f', effectId, path, finalGain))
+    end
+end
+
+local function checkFootsteps()
+    if not footstep.source then
+        return
+    end
+    local player = g_game.getLocalPlayer()
     local now = g_clock.millis()
-    if now - lastStepAt < 180 then
-        return
+    -- allow one full step (plus a little slack) after the last position change
+    -- before deciding that the player stopped walking
+    local ok, stepDuration = pcall(function() return player:getStepDuration(true, 0) end)
+    if not ok or not stepDuration or stepDuration <= 0 then
+        stepDuration = 300
     end
-    lastStepAt = now
-    playEffect(footstepFor(player), 0.45)
+    if not player or not g_game.isOnline() or (not player:isWalking() and now - footstep.lastStep > stepDuration + 150) then
+        debug('footsteps stop')
+        stopFootsteps()
+    end
 end
 
 local function onContainerOpen(container, previousContainer)
@@ -209,7 +321,8 @@ local function stopAmbient()
 end
 
 local function updateAmbience()
-    if not g_game.isOnline() or not ambientItemIds or not g_sounds.isAudioEnabled() then
+    if not g_game.isOnline() or not ambientItemIds or not g_sounds.isAudioEnabled() or ambientVolume() <= 0 then
+        if currentAmbient then stopAmbient() end
         return
     end
     local player = g_game.getLocalPlayer()
@@ -262,7 +375,7 @@ local function updateAmbience()
         return
     end
     stopAmbient()
-    local source = ambientChannel:play(path, 1.5, 0.5 * volume())
+    local source = ambientChannel:play(path, 1.5, ambientVolume())
     if source then
         pcall(function() source:setLooping(true) end)
     end
@@ -293,13 +406,22 @@ local function stopAmbience()
 end
 
 -- ---------------------------------------------------------------------------
+local footstepEvent
 local function onGameStart()
-    lastStepAt = g_clock.millis() + 1500 -- no step burst while the map loads
     startAmbience()
+    if footstepEvent then
+        removeEvent(footstepEvent)
+    end
+    footstepEvent = cycleEvent(checkFootsteps, 100)
 end
 
 local function onGameEnd()
     stopAmbience()
+    if footstepEvent then
+        removeEvent(footstepEvent)
+        footstepEvent = nil
+    end
+    stopFootsteps()
 end
 
 function init()
@@ -315,7 +437,7 @@ function init()
 end
 
 function terminate()
-    stopAmbience()
+    onGameEnd()
     disconnect(g_game, { onSoundEffect = onSoundEffect, onGameStart = onGameStart, onGameEnd = onGameEnd, onVipStateChange = onVipStateChange })
     disconnect(LocalPlayer, { onPositionChange = onLocalWalk })
     disconnect(Container, { onOpen = onContainerOpen, onClose = onContainerClose })
