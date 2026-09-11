@@ -1,5 +1,121 @@
 containerSettings = nil
 
+-- Local addition: remember which side panel (and slot) each bag was docked in,
+-- keyed per character by the bag's item id and its opening order, so that
+-- bags reopened after a relog/death go back where they were instead of being
+-- stacked into whichever panel has room.
+local placementCounters = {}
+
+local function placementChar()
+    local char = g_game.getCharacterName()
+    if not char or #char == 0 then
+        return nil
+    end
+    return char
+end
+
+local function placementKey(container)
+    local item = container:getContainerItem()
+    if not item then
+        return nil
+    end
+    -- item id + name (pet bags are all backpacks but have distinct names) +
+    -- ordinal for identical bags, in opening order
+    local base = string.format('%d:%s', item:getId(), container:getName() or '')
+    placementCounters[base] = (placementCounters[base] or 0) + 1
+    return string.format('%s#%d', base, placementCounters[base])
+end
+
+local function savedPlacements(char)
+    local all = g_settings.getNode('CharContainerPanels') or {}
+    return all, all[char] or {}
+end
+
+local function findSavedPanel(entry)
+    if not entry or not entry.parentId then
+        return nil
+    end
+    local root = modules.game_interface.getRootPanel()
+    local panel = root and root:recursiveGetChildById(entry.parentId)
+    if panel and panel:isVisible() and panel:getClassName() == 'UIMiniWindowContainer' then
+        return panel
+    end
+    return nil
+end
+
+function rememberContainerPlacements()
+    local char = placementChar()
+    if not char then
+        return
+    end
+    local all, mine = savedPlacements(char)
+    for _, container in pairs(g_game.getContainers()) do
+        local window = container.window
+        if window and window.placementKey and not window:isDestroyed() then
+            local parent = window:getParent()
+            if parent and parent:getClassName() == 'UIMiniWindowContainer' then
+                mine[window.placementKey] = { parentId = parent:getId(), index = parent:getChildIndex(window) }
+            end
+        end
+    end
+    all[char] = mine
+    g_settings.setNode('CharContainerPanels', all)
+end
+
+local function placeContainerWindow(containerWindow, container, minContentHeight)
+    containerWindow.placementKey = placementKey(container)
+    local panel = modules.game_interface.findContentPanelAvailable(containerWindow, minContentHeight)
+    panel:addChild(containerWindow)
+end
+
+-- Must run after containerWindow:setup(): setup() re-applies the position
+-- stored under the server-assigned window id ("container3"), which differs
+-- between sessions and is what used to shuffle bags around on relog.
+local function applySavedPlacement(containerWindow)
+    local char = placementChar()
+    local key = containerWindow.placementKey
+    if not char or not key then
+        return
+    end
+    local _, mine = savedPlacements(char)
+    local entry = mine[key]
+    local panel = findSavedPanel(entry)
+    if not panel then
+        return
+    end
+    local current = containerWindow:getParent()
+    if current == panel then
+        return
+    end
+    if current then
+        current:removeChild(containerWindow)
+    end
+    local index = entry.index
+    if index and index >= 1 and index <= panel:getChildCount() + 1 then
+        panel:insertChild(index, containerWindow)
+    else
+        panel:addChild(containerWindow)
+    end
+end
+
+local placementEvent = nil
+local function onPlacementGameStart()
+    placementCounters = {}
+    if placementEvent then
+        removeEvent(placementEvent)
+    end
+    placementEvent = cycleEvent(rememberContainerPlacements, 3000)
+end
+
+local function onPlacementGameEnd()
+    rememberContainerPlacements()
+    if placementEvent then
+        removeEvent(placementEvent)
+        placementEvent = nil
+    end
+    placementCounters = {}
+end
+
 function init()
     g_ui.importStyle('container')
 
@@ -34,6 +150,13 @@ function init()
     connect(Game, {
         onGameEnd = clean()
     })
+    connect(g_game, {
+        onGameStart = onPlacementGameStart,
+        onGameEnd = onPlacementGameEnd
+    })
+    if g_game.isOnline() then
+        onPlacementGameStart()
+    end
 
     reloadContainers()
 end
@@ -48,6 +171,14 @@ function terminate()
     disconnect(Game, {
         onGameEnd = clean()
     })
+    disconnect(g_game, {
+        onGameStart = onPlacementGameStart,
+        onGameEnd = onPlacementGameEnd
+    })
+    if placementEvent then
+        removeEvent(placementEvent)
+        placementEvent = nil
+    end
 end
 
 function reloadContainers()
@@ -1109,8 +1240,7 @@ function onContainerOpen(container, previousContainer)
     end
 
     if not previousContainer then
-        local panel = modules.game_interface.findContentPanelAvailable(containerWindow, cellSize.height)
-        panel:addChild(containerWindow)
+        placeContainerWindow(containerWindow, container, cellSize.height)
     end
 
     if not previousContainer or previousContainer:getCapacity() >= container:getCapacity() then
@@ -1127,6 +1257,17 @@ function onContainerOpen(container, previousContainer)
     end
 
     containerWindow:setup()
+    if not previousContainer then
+        applySavedPlacement(containerWindow)
+        -- setup() may still move the window via a deferred insert; re-apply.
+        for _, delay in ipairs({ 300, 1500 }) do
+            scheduleEvent(function()
+                if not containerWindow:isDestroyed() then
+                    applySavedPlacement(containerWindow)
+                end
+            end, delay)
+        end
+    end
     
     -- Apply current sorting mode if one is active and manual sort mode is disabled
     local currentSortMode = containerSettings and containerSettings['currentSortMode']

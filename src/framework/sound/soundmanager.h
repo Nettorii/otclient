@@ -136,6 +136,20 @@ public:
     bool isEaxEnabled();
     bool loadClientFiles(const std::string& directory);
     std::string getAudioFileNameById(int32_t audioFileId);
+    // Local additions: resolve a numeric sound effect (the id the server sends /
+    // SoundEffect_t) to one audio file id, honouring random variants and the
+    // catalogue's random volume/pitch ranges. 0 / "" when unknown.
+    uint32_t getSoundEffectAudioId(uint32_t effectId);
+    std::string getSoundEffectFileName(uint32_t effectId);
+    float getSoundEffectVolume(uint32_t effectId);
+    float getSoundEffectPitch(uint32_t effectId);
+    int getSoundEffectType(uint32_t effectId);
+    bool hasSoundEffect(uint32_t effectId) { return m_clientSoundEffects.contains(effectId); }
+    // Item ambience: looping audio file for an item type given how many are on
+    // screen (0 when the item has no ambience), and the audible distance.
+    uint32_t getItemAmbientAudioId(uint32_t itemClientId, uint32_t countOnScreen);
+    uint32_t getItemAmbientMaxDistance(uint32_t itemClientId);
+    std::vector<uint32_t> getItemAmbientItemIds();
 
     void preload(std::string filename);
     SoundSourcePtr play(const std::string& filename, float fadetime = 0, float gain = 0, float pitch = 0);

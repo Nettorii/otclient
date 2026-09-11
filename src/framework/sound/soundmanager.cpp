@@ -538,6 +538,98 @@ bool SoundManager::loadClientFiles(const std::string& directory)
     }
 }
 
+uint32_t SoundManager::getSoundEffectAudioId(uint32_t effectId)
+{
+    const auto it = m_clientSoundEffects.find(effectId);
+    if (it == m_clientSoundEffects.end())
+        return 0;
+    const ClientSoundEffect& effect = it->second;
+    if (!effect.randomSoundId.empty()) {
+        const int index = stdext::random_range(0, static_cast<int>(effect.randomSoundId.size()) - 1);
+        return effect.randomSoundId[index];
+    }
+    return effect.soundId;
+}
+
+std::string SoundManager::getSoundEffectFileName(uint32_t effectId)
+{
+    const uint32_t audioId = getSoundEffectAudioId(effectId);
+    if (audioId == 0)
+        return "";
+    return getAudioFileNameById(static_cast<int32_t>(audioId));
+}
+
+float SoundManager::getSoundEffectVolume(uint32_t effectId)
+{
+    const auto it = m_clientSoundEffects.find(effectId);
+    if (it == m_clientSoundEffects.end())
+        return 1.0f;
+    const ClientSoundEffect& effect = it->second;
+    if (effect.volumeMin <= 0.f && effect.volumeMax <= 0.f)
+        return 1.0f;
+    if (effect.volumeMax <= effect.volumeMin)
+        return effect.volumeMin;
+    return stdext::random_range(effect.volumeMin, effect.volumeMax);
+}
+
+float SoundManager::getSoundEffectPitch(uint32_t effectId)
+{
+    const auto it = m_clientSoundEffects.find(effectId);
+    if (it == m_clientSoundEffects.end())
+        return 1.0f;
+    const ClientSoundEffect& effect = it->second;
+    if (effect.pitchMin <= 0.f && effect.pitchMax <= 0.f)
+        return 1.0f;
+    if (effect.pitchMax <= effect.pitchMin)
+        return effect.pitchMin;
+    return stdext::random_range(effect.pitchMin, effect.pitchMax);
+}
+
+int SoundManager::getSoundEffectType(uint32_t effectId)
+{
+    const auto it = m_clientSoundEffects.find(effectId);
+    if (it == m_clientSoundEffects.end())
+        return 0;
+    return static_cast<int>(it->second.type);
+}
+
+uint32_t SoundManager::getItemAmbientAudioId(uint32_t itemClientId, uint32_t countOnScreen)
+{
+    for (const auto& [id, ambient] : m_clientItemAmbientEffects) {
+        if (std::find(ambient.clientIds.begin(), ambient.clientIds.end(), itemClientId) == ambient.clientIds.end())
+            continue;
+        uint32_t best = 0;
+        uint32_t bestCount = 0;
+        for (const auto& [count, audioId] : ambient.itemCountSoundEffects) {
+            if (countOnScreen >= count && count >= bestCount) {
+                bestCount = count;
+                best = audioId;
+            }
+        }
+        return best;
+    }
+    return 0;
+}
+
+uint32_t SoundManager::getItemAmbientMaxDistance(uint32_t itemClientId)
+{
+    for (const auto& [id, ambient] : m_clientItemAmbientEffects) {
+        if (std::find(ambient.clientIds.begin(), ambient.clientIds.end(), itemClientId) != ambient.clientIds.end())
+            return 8; // the catalogue's max distance is not kept by the loader; use the visible range
+    }
+    return 0;
+}
+
+std::vector<uint32_t> SoundManager::getItemAmbientItemIds()
+{
+    std::vector<uint32_t> ids;
+    for (const auto& [id, ambient] : m_clientItemAmbientEffects) {
+        for (const uint32_t itemId : ambient.clientIds)
+            ids.push_back(itemId);
+    }
+    return ids;
+}
+
 std::string SoundManager::getAudioFileNameById(int32_t audioFileId)
 {
     if (m_clientSoundFiles.contains(audioFileId)) {

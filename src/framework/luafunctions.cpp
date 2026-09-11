@@ -1106,6 +1106,15 @@ void Application::registerLuaFunctions()
     g_lua.bindSingletonFunction("g_sounds", "isEaxEnabled", &SoundManager::isEaxEnabled, &g_sounds);
     g_lua.bindSingletonFunction("g_sounds", "loadClientFiles", &SoundManager::loadClientFiles, &g_sounds);
     g_lua.bindSingletonFunction("g_sounds", "getAudioFileNameById", &SoundManager::getAudioFileNameById, &g_sounds);
+    g_lua.bindSingletonFunction("g_sounds", "getSoundEffectAudioId", &SoundManager::getSoundEffectAudioId, &g_sounds);
+    g_lua.bindSingletonFunction("g_sounds", "getSoundEffectFileName", &SoundManager::getSoundEffectFileName, &g_sounds);
+    g_lua.bindSingletonFunction("g_sounds", "getSoundEffectVolume", &SoundManager::getSoundEffectVolume, &g_sounds);
+    g_lua.bindSingletonFunction("g_sounds", "getSoundEffectPitch", &SoundManager::getSoundEffectPitch, &g_sounds);
+    g_lua.bindSingletonFunction("g_sounds", "getSoundEffectType", &SoundManager::getSoundEffectType, &g_sounds);
+    g_lua.bindSingletonFunction("g_sounds", "hasSoundEffect", &SoundManager::hasSoundEffect, &g_sounds);
+    g_lua.bindSingletonFunction("g_sounds", "getItemAmbientAudioId", &SoundManager::getItemAmbientAudioId, &g_sounds);
+    g_lua.bindSingletonFunction("g_sounds", "getItemAmbientMaxDistance", &SoundManager::getItemAmbientMaxDistance, &g_sounds);
+    g_lua.bindSingletonFunction("g_sounds", "getItemAmbientItemIds", &SoundManager::getItemAmbientItemIds, &g_sounds);
 
     g_lua.registerClass<SoundSource>();
     g_lua.bindClassStaticFunction<SoundSource>("create", [] { return std::make_shared<SoundSource>(); });
