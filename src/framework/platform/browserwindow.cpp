@@ -350,10 +350,11 @@ void BrowserWindow::handleMouseCallback(int eventType, const EmscriptenMouseEven
 
 void BrowserWindow::handleMouseWheelCallback(const EmscriptenWheelEvent* event) {
     if (event->mouse.screenX != 0 && event->mouse.screenY != 0 && event->mouse.clientX != 0 && event->mouse.clientY != 0 && event->mouse.targetX != 0 && event->mouse.targetY != 0) {
-        g_dispatcher.addEvent([this, event] {
+        const bool down = event->deltaY > 0; // `event` is freed after this callback returns (proxied)
+        g_dispatcher.addEvent([this, down] {
             m_inputEvent.reset();
             m_inputEvent.type = Fw::MouseReleaseInputEvent;
-            event->deltaY > 0 ? m_inputEvent.wheelDirection = Fw::MouseWheelDown : m_inputEvent.wheelDirection = Fw::MouseWheelUp;
+            m_inputEvent.wheelDirection = down ? Fw::MouseWheelDown : Fw::MouseWheelUp;
             m_inputEvent.type = Fw::MouseWheelInputEvent;
             m_inputEvent.mouseButton = Fw::MouseMidButton;
             if (m_inputEvent.type != Fw::NoInputEvent && m_onInputEvent)
@@ -386,56 +387,69 @@ void BrowserWindow::handleMouseMotionCallback(const EmscriptenMouseEvent* mouseE
 
 void BrowserWindow::handleTouchCallback(int eventType, const EmscriptenTouchEvent* event) {
     m_usingTouch = true;
-    if (event->touches->screenX != 0 && event->touches->screenY != 0 && event->touches->clientX != 0 && event->touches->clientY != 0 && event->touches->targetX != 0 && event->touches->targetY != 0) {
-        updateTouchPosition(event);
-        if (eventType == EMSCRIPTEN_EVENT_TOUCHMOVE) {
-            m_clickTimer.stop();
-            return;
-        };
-        g_dispatcher.addEvent([this, eventType, event] {
-            m_inputEvent.reset();
-            Point newMousePos(event->touches->targetX / m_displayDensity, event->touches->targetY / m_displayDensity);
-            m_inputEvent.mouseButton = Fw::MouseLeftButton;
-            if (eventType == EMSCRIPTEN_EVENT_TOUCHSTART) {
-                m_clickTimer.restart();
-                m_inputEvent.type = Fw::MousePressInputEvent;
-                m_mouseButtonStates |= 1 << Fw::MouseLeftButton;
-            } else if (eventType == EMSCRIPTEN_EVENT_TOUCHEND) {
-                m_inputEvent.type = Fw::MouseReleaseInputEvent;
-                g_dispatcher.addEvent([this] { m_mouseButtonStates &= ~(1 << Fw::MouseLeftButton); });
-                if (m_clickTimer.running() && m_clickTimer.ticksElapsed() >= 200) {
-                    processLongTouch(event);
-                }
-                m_clickTimer.stop();
-            }
-            if (m_inputEvent.type != Fw::NoInputEvent && m_onInputEvent)
-                m_onInputEvent(m_inputEvent);
-        });
+    // With PROXY_TO_PTHREAD the DOM event is copied into a malloc'd struct that emscripten
+    // frees as soon as this callback returns, so nothing below may keep the `event` pointer:
+    // everything the deferred dispatcher events need is copied out by value here.
+    const EmscriptenTouchPoint& touch = event->touches[0];
+    if (touch.screenX == 0 || touch.screenY == 0 || touch.clientX == 0 || touch.clientY == 0 || touch.targetX == 0 || touch.targetY == 0)
+        return;
+
+    const Point pos(touch.targetX / m_displayDensity, touch.targetY / m_displayDensity);
+    updateTouchPosition(pos);
+    if (eventType == EMSCRIPTEN_EVENT_TOUCHMOVE) {
+        m_touchStartTicks = -1; // a moving finger is a drag, never a long press
+        return;
     }
+
+    // measure the press duration with the wall clock when the DOM event arrives, not
+    // with g_clock when the dispatcher gets around to it: g_clock only advances once
+    // per frame, so on a slow frame a short tap would look like a long press and
+    // turn into a right click
+    bool longTouch = false;
+    if (eventType == EMSCRIPTEN_EVENT_TOUCHSTART) {
+        m_touchStartTicks = stdext::millis();
+    } else if (eventType == EMSCRIPTEN_EVENT_TOUCHEND) {
+        longTouch = m_touchStartTicks >= 0 && stdext::millis() - m_touchStartTicks >= 200;
+        m_touchStartTicks = -1;
+    }
+
+    g_dispatcher.addEvent([this, eventType, longTouch] {
+        m_inputEvent.reset();
+        m_inputEvent.mouseButton = Fw::MouseLeftButton;
+        if (eventType == EMSCRIPTEN_EVENT_TOUCHSTART) {
+            m_inputEvent.type = Fw::MousePressInputEvent;
+            m_mouseButtonStates |= 1 << Fw::MouseLeftButton;
+        } else if (eventType == EMSCRIPTEN_EVENT_TOUCHEND) {
+            m_inputEvent.type = Fw::MouseReleaseInputEvent;
+            g_dispatcher.addEvent([this] { m_mouseButtonStates &= ~(1 << Fw::MouseLeftButton); });
+            if (longTouch)
+                processLongTouch();
+        }
+        if (m_inputEvent.type != Fw::NoInputEvent && m_onInputEvent)
+            m_onInputEvent(m_inputEvent);
+    });
 }
 
-void BrowserWindow::updateTouchPosition(const EmscriptenTouchEvent* event) {
-    g_dispatcher.addEvent([this, event] {
+void BrowserWindow::updateTouchPosition(const Point& pos) {
+    g_dispatcher.addEvent([this, pos] {
         m_inputEvent.reset();
-        Point newMousePos(event->touches->targetX / m_displayDensity, event->touches->targetY / m_displayDensity);
-        m_inputEvent.mouseMoved = newMousePos - m_inputEvent.mousePos;
-        m_inputEvent.mousePos = newMousePos;
+        m_inputEvent.mouseMoved = pos - m_inputEvent.mousePos;
+        m_inputEvent.mousePos = pos;
         m_inputEvent.type = Fw::MouseMoveInputEvent;
         if (m_onInputEvent)
             m_onInputEvent(m_inputEvent);
     });
 }
 
-void BrowserWindow::processLongTouch(const EmscriptenTouchEvent* event) {
-    m_clickTimer.stop();
-    g_dispatcher.addEvent([this, event] {
+void BrowserWindow::processLongTouch() {
+    g_dispatcher.addEvent([this] {
         m_inputEvent.reset();
         m_inputEvent.mouseButton = Fw::MouseRightButton;
         m_inputEvent.type = Fw::MousePressInputEvent;
         if (m_onInputEvent)
             m_onInputEvent(m_inputEvent);
     });
-    g_dispatcher.addEvent([this, event] {
+    g_dispatcher.addEvent([this] {
         m_inputEvent.reset();
         m_inputEvent.mouseButton = Fw::MouseRightButton;
         m_inputEvent.type = Fw::MouseReleaseInputEvent;

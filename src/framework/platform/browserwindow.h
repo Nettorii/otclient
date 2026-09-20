@@ -69,8 +69,8 @@ public:
     void handleKeyboardCallback(int eventType, const EmscriptenKeyboardEvent* event);
     void handleFocusCallback(int eventType, const EmscriptenFocusEvent* event);
     void handleTouchCallback(int eventType, const EmscriptenTouchEvent* event);
-    void updateTouchPosition(const EmscriptenTouchEvent* event);
-    void processLongTouch(const EmscriptenTouchEvent* event);
+    void updateTouchPosition(const Point& pos);
+    void processLongTouch();
 
     Size getDisplaySize() override;
     std::string getClipboardText() override;
@@ -80,7 +80,7 @@ protected:
     int internalLoadMouseCursor(const ImagePtr& image, const Point& hotSpot) override;
 private:
     bool m_running;
-    Timer m_clickTimer;
+    ticks_t m_touchStartTicks{ -1 }; // wall clock (stdext::millis) at touchstart, -1 when moved/released
     bool m_usingTouch = false;
     std::vector<std::pair<char const*, Fw::Key>> web_keymap;
     std::string m_clipboardText;
