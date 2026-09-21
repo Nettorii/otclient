@@ -33,8 +33,38 @@ class MainActivity : GameActivity() {
         // Track keyboard visibility and height for toolbar positioning
         var lastImeVisible = false
         var lastImeBottom = 0
+        var lastSafeLeft = -1
+        var lastSafeTop = -1
+        var lastSafeRight = -1
+        var lastSafeBottom = -1
+        var lastKeyboardHeight = -1
         ViewCompat.setOnApplyWindowInsetsListener(binding.root) { _, insets ->
+            val safeInsets = insets.getInsetsIgnoringVisibility(
+                WindowInsetsCompat.Type.systemBars() or WindowInsetsCompat.Type.displayCutout()
+            )
             val imeInsets = insets.getInsets(WindowInsetsCompat.Type.ime())
+            val keyboardHeight = imeInsets.bottom
+
+            if (safeInsets.left != lastSafeLeft ||
+                safeInsets.top != lastSafeTop ||
+                safeInsets.right != lastSafeRight ||
+                safeInsets.bottom != lastSafeBottom ||
+                keyboardHeight != lastKeyboardHeight
+            ) {
+                lastSafeLeft = safeInsets.left
+                lastSafeTop = safeInsets.top
+                lastSafeRight = safeInsets.right
+                lastSafeBottom = safeInsets.bottom
+                lastKeyboardHeight = keyboardHeight
+                androidManager.nativeSetViewportMetrics(
+                    safeInsets.left,
+                    safeInsets.top,
+                    safeInsets.right,
+                    safeInsets.bottom,
+                    keyboardHeight,
+                )
+            }
+
             val imeVisible = imeInsets.bottom > 0
             if (imeVisible != lastImeVisible || imeInsets.bottom != lastImeBottom) {
                 lastImeVisible = imeVisible

@@ -139,6 +139,13 @@ class AndroidManager(
 
     external fun nativeInit()
     external fun nativeSetAudioEnabled(enabled: Boolean)
+    external fun nativeSetViewportMetrics(
+        safeLeft: Int,
+        safeTop: Int,
+        safeRight: Int,
+        safeBottom: Int,
+        keyboardHeight: Int,
+    )
 
     private fun showPreviewInternal(animate: Boolean = true) {
         previewContainer.animate().cancel()

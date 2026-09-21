@@ -205,6 +205,11 @@ void Java_com_otclient_AndroidManager_nativeSetAudioEnabled(JNIEnv*, jobject, jb
     g_sounds.setAudioEnabled(enabled);
 }
 
+void Java_com_otclient_AndroidManager_nativeSetViewportMetrics(
+        JNIEnv*, jobject, jint left, jint top, jint right, jint bottom, jint keyboardHeight) {
+    g_window.setViewportMetrics({left, top, right, bottom, keyboardHeight});
+}
+
 }
 
 #endif

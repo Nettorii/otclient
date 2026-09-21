@@ -483,7 +483,13 @@ void AndroidWindow::handleCmd(int32_t cmd) {
         case APP_CMD_WINDOW_RESIZED:
         case APP_CMD_CONFIG_CHANGED:
             updateDisplayDensityFromSystem(g_androidManager.getScreenDensity());
-            queryGlSize();
+            {
+                const Size oldSize = m_size;
+                queryGlSize();
+                if (m_size != oldSize && m_onResize) {
+                    m_onResize(m_size);
+                }
+            }
             ALOGD("RESIZED/CONFIG_CHANGED: size=%dx%d, density=%.2f", m_size.width(), m_size.height(), m_displayDensity);
             break;
         default:
