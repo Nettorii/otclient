@@ -26,6 +26,7 @@
 #include <framework/core/timer.h>
 #include <framework/global.h>
 #include <framework/graphics/declarations.h>
+#include <framework/platform/viewportmetrics.h>
 
  // Forward declaration
 class Color;
@@ -48,6 +49,7 @@ class PlatformWindow
 
     using OnResizeCallback = std::function<void(const Size&)>;
     using OnInputEventCallback = std::function<void(const InputEvent&)>;
+    using OnViewportMetricsChangeCallback = std::function<void()>;
 
 public:
     virtual void init() = 0;
@@ -118,6 +120,11 @@ public:
     int getY() { return m_position.y; }
     Point getMousePosition() { return m_inputEvent.mousePos; }
     int getKeyboardModifiers() { return m_inputEvent.keyboardModifiers; }
+    int getSafeAreaInsetLeft() const { return m_viewportMetrics.safeLeft; }
+    int getSafeAreaInsetTop() const { return m_viewportMetrics.safeTop; }
+    int getSafeAreaInsetRight() const { return m_viewportMetrics.safeRight; }
+    int getSafeAreaInsetBottom() const { return m_viewportMetrics.safeBottom; }
+    int getKeyboardHeight() const { return m_viewportMetrics.keyboardHeight; }
 
     bool isKeyPressed(const Fw::Key keyCode) { return m_keyInfo[keyCode].state; }
     bool isMouseButtonPressed(const Fw::MouseButton mouseButton)
@@ -132,6 +139,8 @@ public:
     void setOnClose(const std::function<void()>& onClose) { m_onClose = onClose; }
     void setOnResize(const OnResizeCallback& onResize) { m_onResize = onResize; }
     void setOnInputEvent(const OnInputEventCallback& onInputEvent) { m_onInputEvent = onInputEvent; }
+    void setOnViewportMetricsChange(const OnViewportMetricsChangeCallback& onViewportMetricsChange) { m_onViewportMetricsChange = onViewportMetricsChange; }
+    void setViewportMetrics(const ViewportMetrics& viewportMetrics);
 
     void addKeyListener(std::function<void(const InputEvent&)> listener) { m_keyListeners.push_back(listener); }
 
@@ -160,6 +169,7 @@ protected:
     Size m_unmaximizedSize;
     Point m_unmaximizedPos;
     InputEvent m_inputEvent;
+    ViewportMetrics m_viewportMetrics;
 
     uint32_t m_mouseButtonStates{ 0 };
 
@@ -174,6 +184,7 @@ protected:
     std::function<void()> m_onClose;
     OnResizeCallback m_onResize;
     OnInputEventCallback m_onInputEvent;
+    OnViewportMetricsChangeCallback m_onViewportMetricsChange;
 
     std::vector<std::function<void(const InputEvent&)>> m_keyListeners;
 };

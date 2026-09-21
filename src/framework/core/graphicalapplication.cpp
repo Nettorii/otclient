@@ -75,6 +75,10 @@ void GraphicalApplication::init(std::vector<std::string>& args, ApplicationConte
 
     g_window.setOnClose([this] { g_dispatcher.addEvent([this] { close(); }); });
 
+    g_window.setOnViewportMetricsChange([] {
+        g_lua.callGlobalField("g_window", "onViewportMetricsChange");
+    });
+
     g_mouse.init();
 
     // initialize ui

@@ -45,6 +45,19 @@ X11Window window;
 
 PlatformWindow& g_window = window;
 
+void PlatformWindow::setViewportMetrics(const ViewportMetrics& viewportMetrics)
+{
+    auto normalizedMetrics = viewportMetrics;
+    normalizedMetrics.normalize();
+
+    if (m_viewportMetrics == normalizedMetrics)
+        return;
+
+    m_viewportMetrics = normalizedMetrics;
+    if (m_onViewportMetricsChange)
+        m_onViewportMetricsChange();
+}
+
 int PlatformWindow::loadMouseCursor(const std::string& file, const Point& hotSpot)
 {
     const auto& image = Image::load(file);
