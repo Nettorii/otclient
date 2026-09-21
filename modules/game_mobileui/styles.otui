@@ -1,0 +1,34 @@
+MobileHudSurface < Panel
+  background-color: #08121dcc
+  border-width: 1
+  border-color: #7891a455
+  focusable: false
+
+MobileHudTarget < UIButton
+  size: 48 48
+  background-color: #0b1623dd
+  border-width: 1
+  border-color: #7891a466
+  color: #e5edf4
+  font: verdana-11px-antialised
+  text-align: center
+  focusable: false
+  phantom: false
+  $hover:
+    background-color: #132438e6
+    border-color: #8fa9ba88
+  $pressed:
+    background-color: #1b344bec
+    border-color: #9fc0d699
+
+MobileHudSlot < MobileHudTarget
+  background-color: #0a1420d9
+  color: #aebdca
+  font: verdana-11px-rounded
+
+MobileHudStatusBar < UIProgressBar
+  height: 7
+  background-color: #02060acc
+  border-width: 1
+  border-color: #7891a444
+  phantom: true

@@ -1,0 +1,117 @@
+UIWidget
+  id: mobileHud
+  anchors.fill: parent
+  focusable: false
+  phantom: true
+  visible: false
+
+  MobileHudSurface
+    id: status
+    phantom: true
+
+    Label
+      id: statusName
+      anchors.left: parent.left
+      anchors.top: parent.top
+      margin-left: 8
+      margin-top: 5
+      text: STATUS
+      color: #d7e2eb
+      font: verdana-11px-antialised
+      phantom: true
+
+    MobileHudStatusBar
+      id: health
+      anchors.left: parent.left
+      anchors.right: parent.right
+      anchors.bottom: mana.top
+      margin-left: 8
+      margin-right: 8
+      margin-bottom: 3
+      percent: 100
+      background-color: #641f29dd
+
+    MobileHudStatusBar
+      id: mana
+      anchors.left: parent.left
+      anchors.right: parent.right
+      anchors.bottom: parent.bottom
+      margin-left: 8
+      margin-right: 8
+      margin-bottom: 5
+      percent: 100
+      background-color: #245477dd
+
+  MobileHudTarget
+    id: menu
+    text: MENU
+
+  MobileHudSurface
+    id: joystickHost
+    background-color: #0b162370
+    border-color: #8fa9ba44
+    phantom: true
+
+  UIWidget
+    id: hotbar
+    focusable: false
+    phantom: true
+
+    MobileHudSlot
+      id: slot1
+      text: 1
+
+    MobileHudSlot
+      id: slot2
+      text: 2
+
+    MobileHudSlot
+      id: slot3
+      text: 3
+
+    MobileHudSlot
+      id: slot4
+      text: 4
+
+    MobileHudSlot
+      id: slot5
+      text: 5
+
+    MobileHudSlot
+      id: slot6
+      text: 6
+
+    MobileHudSlot
+      id: slot7
+      text: 7
+      visible: false
+
+    MobileHudSlot
+      id: slot8
+      text: 8
+      visible: false
+
+  UIWidget
+    id: actions
+    focusable: false
+    phantom: true
+
+    MobileHudTarget
+      id: attack
+      text: ATK
+
+    MobileHudTarget
+      id: use
+      text: USE
+
+    MobileHudTarget
+      id: chat
+      text: CHAT
+
+    MobileHudTarget
+      id: inventory
+      text: BAG
+
+  MobileHudTarget
+    id: drawerHandle
+    text: >

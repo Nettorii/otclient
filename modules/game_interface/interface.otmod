@@ -59,6 +59,7 @@ Module
     - game_wheel
     - game_proficiency
     - game_mobilecontrols
+    - game_mobileui
 
   @onLoad: init()
   @onUnload: terminate()
