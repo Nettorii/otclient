@@ -1,10 +1,14 @@
 local activeModal
 local replacementSnapshot
 local keyboardReceiverTracker
+local terminating = false
 
 function initModalHost()
   if keyboardReceiverTracker then
     return true
+  end
+  if terminating then
+    return false
   end
   if not isV2Enabled or not isV2Enabled() then
     return false
@@ -79,6 +83,37 @@ local function safeCall(callback, ...)
   if not ok then
     g_logger.error('[client_mobileui] modal callback failed: ' .. tostring(errorMessage))
   end
+end
+
+local function createClosedHandle(config)
+  local handle = {}
+
+  function handle:setBody(widget)
+    return false
+  end
+
+  function handle:close()
+  end
+
+  function handle:isOpen()
+    return false
+  end
+
+  function handle:replace()
+  end
+
+  function handle:consumeBodyGesture()
+    return false
+  end
+
+  function handle:bindBodyWidget(widget)
+  end
+
+  safeCall(config.onClose)
+  if config.body and not config.body:isDestroyed() then
+    config.body:destroy()
+  end
+  return handle
 end
 
 local function isMouseButtonBlocked(button)
@@ -249,6 +284,9 @@ end
 
 function showModal(config)
   assert(type(config) == 'table', 'modal config must be a table')
+  if terminating then
+    return createClosedHandle(config)
+  end
   initModalHost()
 
   local previousState
@@ -270,7 +308,9 @@ function showModal(config)
     }
     activeModal:replace()
     replacementSnapshot = outerSnapshot
-    supersededDuringReplacement = activeModal ~= nil
+    local state, owner = getForeground()
+    supersededDuringReplacement = activeModal ~= nil or
+      state ~= (previousState or 'gameplay') or owner ~= previousOwner
   elseif replacementSnapshot then
     previousState = replacementSnapshot.state
     previousOwner = replacementSnapshot.owner
@@ -419,7 +459,6 @@ function showModal(config)
     if not open then
       return
     end
-    replacing = true
     finish(true)
   end
 
@@ -513,10 +552,15 @@ function showModal(config)
 end
 
 function terminateModalHost()
-  if activeModal and activeModal:isOpen() then
+  if terminating then
+    return
+  end
+  terminating = true
+  while activeModal and activeModal:isOpen() do
     activeModal:close()
   end
   activeModal = nil
   replacementSnapshot = nil
   uninstallKeyboardReceiverTracker()
+  terminating = false
 end

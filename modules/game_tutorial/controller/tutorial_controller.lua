@@ -277,10 +277,16 @@ end
 -- =============================================*/
 
 function TutorialController:show()
-    if self.mobileModalHandle and self.mobileModalHandle:isOpen() then
-        self.mobileModalHandle.widget:raise()
-        self.mobileModalHandle.widget:focus()
-        self.mobileModalHandle.widget:grabKeyboard()
+    local mobileHandle = self.mobileModalHandle
+    if mobileHandle and mobileHandle:isOpen() then
+        mobileHandle.widget:raise()
+        mobileHandle.widget:focus()
+        local state, owner = mobileUiModule().getForeground()
+        if self.mobileModalHandle ~= mobileHandle or not mobileHandle:isOpen() or
+            state ~= 'modal' or owner ~= mobileHandle then
+            return
+        end
+        mobileHandle.widget:grabKeyboard()
         return
     end
     if self.ui then
