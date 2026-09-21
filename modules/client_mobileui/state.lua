@@ -42,6 +42,35 @@ function runStateSelfTests()
   assert(releasedState == 'gameplay' and releasedOwner == nil,
     'release restores unowned gameplay')
 
+  local reentrantController = createStateController()
+  local reentrantOwner = {}
+  local supersededOwner = {}
+  local reentrantOldOwner = {}
+  local supersededGainCalls = 0
+  local reentrantGainCalls = 0
+
+  function supersededOwner:onForegroundGained()
+    supersededGainCalls = supersededGainCalls + 1
+  end
+
+  function reentrantOwner:onForegroundGained()
+    reentrantGainCalls = reentrantGainCalls + 1
+  end
+
+  function reentrantOldOwner:onForegroundLost()
+    reentrantController.set('modal', reentrantOwner)
+  end
+
+  reentrantController.set('drawer', reentrantOldOwner)
+  reentrantController.set('chat', supersededOwner)
+  local reentrantState, activeReentrantOwner = reentrantController.get()
+  assert(reentrantState == 'modal' and activeReentrantOwner == reentrantOwner,
+    'reentrant transition must remain active')
+  assert(reentrantGainCalls == 1,
+    'reentrant transition owner must gain foreground once')
+  assert(supersededGainCalls == 0,
+    'superseded outer owner must not gain foreground')
+
   for _, acceptedState in ipairs({
     'gameplay', 'drawer', 'chat', 'modal', 'reconnecting'
   }) do
@@ -79,7 +108,8 @@ createStateController = function()
     if oldOwner and oldOwner.onForegroundLost then
       oldOwner:onForegroundLost(state, owner)
     end
-    if owner and owner.onForegroundGained then
+    if activeState == state and activeOwner == owner and
+        owner and owner.onForegroundGained then
       owner:onForegroundGained(oldState, oldOwner)
     end
     return true

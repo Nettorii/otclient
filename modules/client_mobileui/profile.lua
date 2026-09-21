@@ -75,6 +75,33 @@ function runSelfTests()
   metrics[2] = 600
   boundRefresh()
   expectEqual(notifications, 1, 'unsubscribe closure is idempotent')
+
+  local firstCycleCalls = 0
+  local removedDuringCycleCalls = 0
+  local addedDuringCycleCalls = 0
+  local unsubscribeDuringCycle
+  service.subscribe(function()
+    firstCycleCalls = firstCycleCalls + 1
+    unsubscribeDuringCycle()
+    service.subscribe(function()
+      addedDuringCycleCalls = addedDuringCycleCalls + 1
+    end)
+  end)
+  unsubscribeDuringCycle = service.subscribe(function()
+    removedDuringCycleCalls = removedDuringCycleCalls + 1
+  end)
+  metrics[2] = 599
+  boundRefresh()
+  expectEqual(firstCycleCalls, 1, 'cycle-start subscriber called once')
+  expectEqual(removedDuringCycleCalls, 1,
+    'subscriber removed during notification still runs in current cycle')
+  expectEqual(addedDuringCycleCalls, 0,
+    'subscriber added during notification waits until next cycle')
+  metrics[2] = 390
+  boundRefresh()
+  expectEqual(addedDuringCycleCalls, 1,
+    'subscriber added during notification runs in next cycle')
+
   service.stop()
   expectEqual(unboundRefresh, boundRefresh, 'profile service disconnects its refresh callback')
 
@@ -185,7 +212,11 @@ createProfileService = function(readMetrics, bindRefresh, unbindRefresh)
     end
 
     activeProfile = nextProfile
+    local notificationSnapshot = {}
     for _, callback in pairs(subscribers) do
+      table.insert(notificationSnapshot, callback)
+    end
+    for _, callback in ipairs(notificationSnapshot) do
       callback(copyProfile(activeProfile))
     end
     return true
