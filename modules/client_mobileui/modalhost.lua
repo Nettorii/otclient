@@ -1,45 +1,73 @@
 local activeModal
 local replacementSnapshot
+local keyboardReceiverTracker
 
-local function installKeyboardReceiverTracker()
-  if UIWidget.mobileModalKeyboardReceiverTracker then
-    return UIWidget.mobileModalKeyboardReceiverTracker
+function initModalHost()
+  if keyboardReceiverTracker then
+    return true
+  end
+  if not isV2Enabled or not isV2Enabled() then
+    return false
   end
 
-  local tracker = {}
-  local nativeGrabKeyboard = UIWidget.grabKeyboard
-  local nativeUngrabKeyboard = UIWidget.ungrabKeyboard
+  local tracker = {
+    nativeGrabKeyboard = UIWidget.grabKeyboard,
+    nativeUngrabKeyboard = UIWidget.ungrabKeyboard
+  }
 
-  UIWidget.grabKeyboard = function(widget)
-    tracker.receiver = widget
-    return nativeGrabKeyboard(widget)
-  end
-
-  UIWidget.ungrabKeyboard = function(widget)
-    local result = nativeUngrabKeyboard(widget)
-    if tracker.receiver == widget and not g_ui.isKeyboardGrabbed() then
+  tracker.grabKeyboard = function(widget)
+    tracker.nativeGrabKeyboard(widget)
+    if not widget:isDestroyed() and g_ui.isKeyboardGrabbed() then
+      tracker.receiver = widget
+    else
       tracker.receiver = nil
     end
-    return result
   end
 
+  tracker.ungrabKeyboard = function(widget)
+    tracker.nativeUngrabKeyboard(widget)
+    if tracker.receiver == widget then
+      tracker.receiver = nil
+    end
+  end
+
+  UIWidget.grabKeyboard = tracker.grabKeyboard
+  UIWidget.ungrabKeyboard = tracker.ungrabKeyboard
   UIWidget.mobileModalKeyboardReceiverTracker = tracker
-  return tracker
+  keyboardReceiverTracker = tracker
+  return true
 end
 
-local keyboardReceiverTracker = installKeyboardReceiverTracker()
+local function uninstallKeyboardReceiverTracker()
+  local tracker = keyboardReceiverTracker
+  if not tracker then
+    return
+  end
+
+  UIWidget.grabKeyboard = tracker.nativeGrabKeyboard
+  UIWidget.ungrabKeyboard = tracker.nativeUngrabKeyboard
+  if UIWidget.mobileModalKeyboardReceiverTracker == tracker then
+    UIWidget.mobileModalKeyboardReceiverTracker = nil
+  end
+  tracker.receiver = nil
+  keyboardReceiverTracker = nil
+end
 
 local function getKeyboardReceiver()
+  if not keyboardReceiverTracker then
+    return nil
+  end
   if not g_ui.isKeyboardGrabbed() then
     keyboardReceiverTracker.receiver = nil
     return nil
   end
 
   local receiver = keyboardReceiverTracker.receiver
-  if receiver and not receiver:isDestroyed() then
-    return receiver
+  if receiver and receiver:isDestroyed() then
+    keyboardReceiverTracker.receiver = nil
+    return nil
   end
-  return nil
+  return receiver
 end
 
 local function safeCall(callback, ...)
@@ -221,6 +249,7 @@ end
 
 function showModal(config)
   assert(type(config) == 'table', 'modal config must be a table')
+  initModalHost()
 
   local previousState
   local previousOwner
@@ -351,6 +380,10 @@ function showModal(config)
           restoredOwner == previousOwner then
         if isRestorableWidget(previousFocusedWidget, true) then
           previousFocusedWidget:focus()
+          local focusState, focusOwner = getForeground()
+          if focusState ~= restoredState or focusOwner ~= restoredOwner then
+            return
+          end
         end
         if isRestorableWidget(previousKeyboardReceiver, false) then
           previousKeyboardReceiver:grabKeyboard()
@@ -464,6 +497,12 @@ function showModal(config)
   backdrop:show()
   backdrop:raise()
   backdrop:focus()
+  state, owner = getForeground()
+  if not open or state ~= 'modal' or owner ~= handle then
+    replacing = true
+    finish(true)
+    return handle
+  end
   backdrop:grabKeyboard()
   addEvent(function()
     if open then
@@ -478,4 +517,6 @@ function terminateModalHost()
     activeModal:close()
   end
   activeModal = nil
+  replacementSnapshot = nil
+  uninstallKeyboardReceiverTracker()
 end

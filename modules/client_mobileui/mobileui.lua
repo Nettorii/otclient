@@ -55,6 +55,9 @@ function init()
   g_ui.importStyle('mobileui.otui')
   g_ui.importStyle('modalhost.otui')
   initProfile()
+  if isV2Enabled() then
+    initModalHost()
+  end
 end
 
 function terminate()
