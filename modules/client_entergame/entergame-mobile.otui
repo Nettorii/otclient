@@ -37,6 +37,7 @@ UIWindow
 
     Label
       id: loginTitle
+      !text: tr('Enter Game')
       font: cipsoftFont
       color: #f4f7fa
       anchors.top: parent.top
@@ -85,18 +86,43 @@ UIWindow
       anchors.top: passwordLabel.bottom
       margin-right: 8
 
-    Label
-      id: loginErrorLabel
-      visible: false
-      color: #ff8b78
-      text-wrap: true
-      text-align: left
+    UIScrollArea
+      id: loginErrorArea
       anchors.left: parent.left
       anchors.right: parent.horizontalCenter
       anchors.top: accountPasswordTextEdit.bottom
+      anchors.bottom: btnCreateNewAccount.top
       margin-top: 5
-      margin-right: 8
-      height: 34
+      margin-right: 20
+      margin-bottom: 4
+      vertical-scrollbar: loginErrorScrollBar
+      clipping: true
+      layout: verticalBox
+
+      Label
+        id: loginErrorLabel
+        visible: false
+        color: #ff8b78
+        text-wrap: true
+        text-auto-resize: true
+        text-align: left
+
+      Label
+        id: serverInfoLabel
+        font: verdana-11px-rounded
+        color: #7ed89b
+        text-wrap: true
+        text-auto-resize: true
+
+    VerticalScrollBar
+      id: loginErrorScrollBar
+      visible: false
+      anchors.top: loginErrorArea.top
+      anchors.bottom: loginErrorArea.bottom
+      anchors.left: loginErrorArea.right
+      margin-left: 4
+      step: 18
+      pixels-scroll: true
 
     MobileLoginCheckBox
       id: rememberEmailBox
@@ -161,17 +187,6 @@ UIWindow
           self:setVisible(false)
           self:hide()
         end
-
-    Label
-      id: serverInfoLabel
-      font: verdana-11px-rounded
-      color: #7ed89b
-      text-wrap: true
-      anchors.left: parent.left
-      anchors.right: parent.horizontalCenter
-      anchors.top: loginErrorLabel.bottom
-      margin-right: 8
-      height: 24
 
     MobileLoginButton
       id: btnCreateNewAccount

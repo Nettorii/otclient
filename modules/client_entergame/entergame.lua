@@ -20,8 +20,13 @@ local tokenWindow
 local authErrorBox
 local hasAttemptedAuthenticator = false
 
+local function mobileUiModule()
+    return modules and modules.client_mobileui
+end
+
 local function isMobileV2()
-    return modules.client_mobileui.isV2Enabled()
+    local mobileUi = mobileUiModule()
+    return mobileUi and mobileUi.isV2Enabled and mobileUi.isV2Enabled() or false
 end
 
 local function getEnterGameChild(id)
@@ -47,6 +52,7 @@ local function showLoginError(message, title)
     local label = getEnterGameChild('loginErrorLabel')
     label:setText(message)
     label:setVisible(true)
+    getEnterGameChild('loginErrorScrollBar'):setVisible(true)
     getEnterGameChild('accountPasswordTextEdit'):focus()
 end
 
@@ -55,6 +61,9 @@ local function clearLoginError()
     local label = getEnterGameChild('loginErrorLabel')
     label:setText('')
     label:setVisible(false)
+    local scrollBar = getEnterGameChild('loginErrorScrollBar')
+    scrollBar:setValue(0)
+    scrollBar:setVisible(false)
 end
 
 -- private functions
@@ -185,14 +194,22 @@ local function onUpdateNeeded(protocol, signature)
 end
 
 local function updateLabelText()
+    local title
     if getEnterGameChild('clientComboBox') and tonumber(getEnterGameChild('clientComboBox'):getText()) > 1080 then
-        enterGame:setText("Journey Onwards")
+        title = "Journey Onwards"
         getEnterGameChild('emailLabel'):setText("Email:")
         getEnterGameChild('rememberEmailBox'):setText("Remember Email:")
     else
-        enterGame:setText("Enter Game")
+        title = "Enter Game"
         getEnterGameChild('emailLabel'):setText("Acc Name:")
         getEnterGameChild('rememberEmailBox'):setText("Remember password:")
+    end
+
+    if isMobileV2() then
+        enterGame:setText('')
+        getEnterGameChild('loginTitle'):setText(title)
+    else
+        enterGame:setText(title)
     end
 end
 
@@ -209,7 +226,7 @@ function EnterGame.init()
     local mobileV2 = isMobileV2()
     enterGame = g_ui.displayUI(mobileV2 and 'entergame-mobile' or 'entergame')
     if mobileV2 then
-        local profile = modules.client_mobileui.getProfile()
+        local profile = mobileUiModule().getProfile()
         local surface = getEnterGameChild('loginSurface')
         surface:setWidth(math.min(540, profile.usableWidth - 24))
         surface:setHeight(math.min(316, profile.usableHeight - 24))
@@ -1175,9 +1192,9 @@ function EnterGame.destroyToken()
         tokenWindow:destroy()
       end
       tokenWindow = nil
-      hasAttemptedAuthenticator = false
-      G.authenticatorToken = nil
     end
+    hasAttemptedAuthenticator = false
+    G.authenticatorToken = nil
 end
 
 function ensableBtnCreateNewAccount()
