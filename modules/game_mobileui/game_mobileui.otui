@@ -137,41 +137,7 @@ UIWidget
   UIWidget
     id: hotbar
     focusable: false
-    phantom: true
-
-    MobileHudSlot
-      id: slot1
-      text: 1
-
-    MobileHudSlot
-      id: slot2
-      text: 2
-
-    MobileHudSlot
-      id: slot3
-      text: 3
-
-    MobileHudSlot
-      id: slot4
-      text: 4
-
-    MobileHudSlot
-      id: slot5
-      text: 5
-
-    MobileHudSlot
-      id: slot6
-      text: 6
-
-    MobileHudSlot
-      id: slot7
-      text: 7
-      visible: false
-
-    MobileHudSlot
-      id: slot8
-      text: 8
-      visible: false
+    phantom: false
 
   UIWidget
     id: actions

@@ -426,6 +426,7 @@ function clearButton(button, removeAction)
         local barID, buttonID = string.match(button:getId(), "(.*)%.(.*)")
         ApiJson.removeAction(tonumber(barID), tonumber(buttonID))
     end
+    notifySlotChange(button)
 end
 
 --- Updates the state of a button
@@ -473,6 +474,7 @@ function updateButtonState(button)
         end
         setupButtonTooltip(button, false)
     end
+    notifySlotChange(button)
 end
 
 --- Gets or creates the cache for a button
@@ -743,6 +745,7 @@ function removeCooldown(button)
         button.cooldown:setPercent(100)
         button.cooldown:setText("")
     end
+    notifySlotChange(button)
 end
 
 function updateCooldown(button, timeMs)
@@ -750,6 +753,7 @@ function updateCooldown(button, timeMs)
     button.cooldown:showProgress(modules.client_options.getOption("graphicalCooldown"))
     button.cooldown:setDuration(timeMs)
     button.cooldown:start()
+    notifySlotChange(button)
 end
 
 function updateActionPassive(button)
@@ -774,6 +778,7 @@ function updateActionPassive(button)
                             removeCooldown(button)
                         end, passiveData.cooldown * 1000)
                     end
+                    notifySlotChange(button)
                 end
             end
         end
@@ -794,6 +799,7 @@ function updateActionPassive(button)
             removeCooldown(button)
         end, passiveData.cooldown * 1000)
     end
+    notifySlotChange(button)
 end
 
 -- /*=============================================
@@ -937,6 +943,7 @@ function updateButton(button)
          setupButtonTooltip(button, true)
          button.item:setDraggable(false)
          configureButtonMouseRelease(button)
+         notifySlotChange(button)
          return true
     end
 
@@ -966,6 +973,7 @@ function updateButton(button)
         
         button.item:setDraggable(false)
         configureButtonMouseRelease(button)
+        notifySlotChange(button)
         return true
     end
 
@@ -1054,6 +1062,7 @@ function updateButton(button)
             onExecuteAction(button)
         end
         configureButtonMouseRelease(button)
+        notifySlotChange(button)
         return true
     end
 
@@ -1090,6 +1099,7 @@ function updateButton(button)
             local spellId = spellData.clientId
             if not spellId then
                 print("Warning Spell ID not found L734 modules/game_actionbar/logics/ActionButtonLogic.lua")
+                notifySlotChange(button)
                 return
             end
             local source = SpelllistSettings['Default'].iconFile
@@ -1209,6 +1219,7 @@ function updateButton(button)
     ActionBarController:scheduleEvent(function()
         onMultiUseCooldown()
     end, 100)
+    notifySlotChange(button)
 end
 -- /*=============================================
 -- =            Mouse Drag Event             =

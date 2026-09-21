@@ -21,10 +21,43 @@ MobileHudTarget < UIButton
     background-color: #1b344bec
     border-color: #9fc0d699
 
-MobileHudSlot < MobileHudTarget
+MobileHotbarSlot < MobileHudTarget
   background-color: #0a1420d9
   color: #aebdca
   font: verdana-11px-rounded
+  image-source: /images/game/actionbar/actionbarslot
+  image-border: 2
+  opacity: 0.9
+
+  Item
+    id: item
+    anchors.fill: parent
+    margin: 3
+    virtual: true
+    phantom: true
+    always-show-count: true
+    font: verdana-8px-rounded
+
+  Label
+    id: text
+    anchors.fill: parent
+    margin: 3
+    text-wrap: true
+    text-align: center
+    font: small-9px
+    phantom: true
+    image-fixed-ratio: true
+
+  UIProgressRect
+    id: cooldown
+    anchors.fill: parent
+    background: #101010aa
+    percent: 100
+    focusable: false
+    phantom: true
+    font: verdana-11px-rounded
+    color: white
+    visible: false
 
 MobileHudStatusBar < UIProgressBar
   height: 7

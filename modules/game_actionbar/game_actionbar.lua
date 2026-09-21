@@ -54,6 +54,176 @@ lastHighlightWidget = nil
 isLoaded = false
 local areEventsConnected = false
 
+local slotObservers = {}
+local nextSlotObserverId = 0
+local slotCoordinates = setmetatable({}, { __mode = 'k' })
+local lastSlotSnapshots = {}
+
+local function emptySlotSnapshot()
+    return {
+        assigned = false,
+        itemId = 0,
+        imageSource = '',
+        imageClip = '',
+        text = '',
+        cooldownPercent = 100,
+        cooldownText = '',
+        enabled = false
+    }
+end
+
+local function slotWidget(barId, slotId)
+    local actionBar = actionBars[tonumber(barId)]
+    if not actionBar or not actionBar.tabBar then
+        return nil
+    end
+    return actionBar.tabBar:getChildById(
+        tostring(tonumber(barId)) .. "." .. tostring(tonumber(slotId)))
+end
+
+local function visible(widget)
+    return widget and (not widget.isVisible or widget:isVisible())
+end
+
+local function slotCoordinatesFor(button)
+    if not button then
+        return nil, nil
+    end
+    local coordinates = slotCoordinates[button]
+    if coordinates then
+        return coordinates[1], coordinates[2]
+    end
+    local id = button:getId()
+    local barId, slotId
+    if id then
+        barId, slotId = id:match("^(%d+)%.(%d+)$")
+    end
+    barId, slotId = tonumber(barId), tonumber(slotId)
+    if barId and slotId then
+        slotCoordinates[button] = { barId, slotId }
+    end
+    return barId, slotId
+end
+
+local function snapshotForButton(button)
+    if not button or not button.item then
+        return emptySlotSnapshot()
+    end
+
+    local item = button.item
+    local textWidget = item.text
+    local cache = button.cache or {}
+    local itemId = item.getItemId and (item:getItemId() or 0) or 0
+    local imageSource = textWidget and textWidget.getImageSource and
+        (textWidget:getImageSource() or '') or ''
+    local imageClip = textWidget and textWidget.getImageClip and
+        (textWidget:getImageClip() or '') or ''
+    local text = textWidget and textWidget.getText and
+        (textWidget:getText() or '') or ''
+    local assigned = (tonumber(cache.actionType) or 0) > 0 or
+        itemId > 0 or imageSource ~= '' or text ~= ''
+    local cooldownPercent = 100
+    local cooldownText = ''
+    if button.cooldown and button.cooldown.getPercent and
+        button.cooldown:getPercent() < 100 then
+        cooldownPercent = button.cooldown:getPercent()
+        cooldownText = button.cooldown.getText and
+            (button.cooldown:getText() or '') or ''
+    end
+    local enabled = assigned and
+        (not button.isEnabled or button:isEnabled()) and
+        not visible(item.gray) and
+        not (textWidget and visible(textWidget.gray))
+
+    return {
+        assigned = assigned,
+        itemId = itemId,
+        imageSource = imageSource,
+        imageClip = imageClip,
+        text = text,
+        cooldownPercent = cooldownPercent,
+        cooldownText = cooldownText,
+        enabled = enabled
+    }
+end
+
+local function snapshotsEqual(left, right)
+    if not left or not right then
+        return false
+    end
+    return left.assigned == right.assigned and
+        left.itemId == right.itemId and
+        left.imageSource == right.imageSource and
+        left.imageClip == right.imageClip and
+        left.text == right.text and
+        left.cooldownPercent == right.cooldownPercent and
+        left.cooldownText == right.cooldownText and
+        left.enabled == right.enabled
+end
+
+local function copySnapshot(snapshot)
+    return {
+        assigned = snapshot.assigned,
+        itemId = snapshot.itemId,
+        imageSource = snapshot.imageSource,
+        imageClip = snapshot.imageClip,
+        text = snapshot.text,
+        cooldownPercent = snapshot.cooldownPercent,
+        cooldownText = snapshot.cooldownText,
+        enabled = snapshot.enabled
+    }
+end
+
+function getSlotSnapshot(barId, slotId)
+    return snapshotForButton(slotWidget(barId, slotId))
+end
+
+function executeSlot(barId, slotId, isPress)
+    local button = slotWidget(barId, slotId)
+    if not button or not button.item then
+        return false
+    end
+    onExecuteAction(button, isPress)
+    return true
+end
+
+function subscribeSlotChanges(callback)
+    assert(type(callback) == 'function', 'slot callback must be a function')
+    nextSlotObserverId = nextSlotObserverId + 1
+    local observerId = nextSlotObserverId
+    slotObservers[observerId] = callback
+    local subscribed = true
+    return function()
+        if not subscribed then
+            return
+        end
+        subscribed = false
+        slotObservers[observerId] = nil
+    end
+end
+
+function notifySlotChange(button)
+    local barId, slotId = slotCoordinatesFor(button)
+    if not barId or not slotId then
+        return false
+    end
+    local snapshot = snapshotForButton(button)
+    local key = barId .. "." .. slotId
+    if snapshotsEqual(lastSlotSnapshots[key], snapshot) then
+        return false
+    end
+    lastSlotSnapshots[key] = snapshot
+
+    local observers = {}
+    for _, callback in pairs(slotObservers) do
+        observers[#observers + 1] = callback
+    end
+    for _, callback in ipairs(observers) do
+        callback(barId, slotId, copySnapshot(snapshot))
+    end
+    return true
+end
+
 --- checks if action bar is visible
 local function isActionBarVisible(actionBar)
     return actionBar and actionBar:isVisible()
@@ -188,6 +358,7 @@ function setupActionBar(n)
          if widget.item and widget.item:getItemId() > 100 then
              table.insert(items, widget.item:getItem())
          end
+         notifySlotChange(widget)
     end
 end
 

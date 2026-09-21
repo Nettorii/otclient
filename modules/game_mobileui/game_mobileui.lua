@@ -7,6 +7,7 @@ local actions
 local drawerHandle
 local statusAdapter
 local actionAdapter
+local hotbarAdapter
 local unsubscribeProfile
 local layoutEvent
 local gameActive = false
@@ -194,6 +195,12 @@ local function synchronizeActions()
   end
 end
 
+local function synchronizeHotbar()
+  if hotbarAdapter then
+    hotbarAdapter:updateEnabled()
+  end
+end
+
 local function applyComputedLayout(layout)
   if not hud or hud:isDestroyed() then
     return
@@ -243,6 +250,7 @@ local function applyComputedLayout(layout)
   synchronizeJoystick(layout.joystickHost)
   setControlsVisible(true)
   synchronizeActions()
+  synchronizeHotbar()
 end
 
 function applyProfile(profile)
@@ -250,6 +258,9 @@ function applyProfile(profile)
     return false
   end
 
+  if hotbarAdapter then
+    hotbarAdapter:applyProfile(profile)
+  end
   local layout = computeLayout(profile)
   removeEvent(layoutEvent)
   layoutEvent = addEvent(function()
@@ -275,6 +286,7 @@ function setControlsVisible(visible)
   end
   synchronizeJoystick()
   synchronizeActions()
+  synchronizeHotbar()
   return true
 end
 
@@ -322,17 +334,20 @@ function foregroundOwner:onForegroundGained()
   if not gameActive then
     synchronizeJoystick()
     synchronizeActions()
+    synchronizeHotbar()
     releaseGameplayForeground()
     return
   end
   synchronizeJoystick()
   synchronizeActions()
+  synchronizeHotbar()
   raiseGameplayHud()
 end
 
 function foregroundOwner:onForegroundLost()
   synchronizeJoystick()
   synchronizeActions()
+  synchronizeHotbar()
 end
 
 local function onGameStart()
@@ -348,6 +363,9 @@ local function onGameStart()
   if actionAdapter then
     actionAdapter:onGameStart()
   end
+  if hotbarAdapter then
+    hotbarAdapter:onGameStart()
+  end
   applyProfile(modules.client_mobileui.getProfile())
   local acquiredForeground = acquireGameplayForeground()
   setControlsVisible(true)
@@ -362,6 +380,9 @@ local function onGameEnd()
   end
   if actionAdapter then
     actionAdapter:onGameEnd()
+  end
+  if hotbarAdapter then
+    hotbarAdapter:onGameEnd()
   end
   if not gameActive then
     return
@@ -549,6 +570,12 @@ function init()
     })
     actionAdapter:bind(actions)
   end
+  if MobileHotbar then
+    hotbarAdapter = MobileHotbar.create({
+      isActive = actionsAreActive
+    })
+    hotbarAdapter:bind(hotbar)
+  end
 
   gameActive = false
   controlsFit = false
@@ -589,6 +616,10 @@ function terminate()
   if actionAdapter then
     actionAdapter:terminate()
     actionAdapter = nil
+  end
+  if hotbarAdapter then
+    hotbarAdapter:terminate()
+    hotbarAdapter = nil
   end
   hud:destroy()
   hud = nil
