@@ -58,6 +58,10 @@ local slotObservers = {}
 local nextSlotObserverId = 0
 local slotCoordinates = setmetatable({}, { __mode = 'k' })
 local lastSlotSnapshots = {}
+local slotNotificationDispatching = false
+local pendingSlotNotifications = {}
+local pendingSlotOrder = {}
+local slotNotificationGenerations = {}
 
 local function emptySlotSnapshot()
     return {
@@ -213,13 +217,63 @@ function notifySlotChange(button)
         return false
     end
     lastSlotSnapshots[key] = snapshot
+    local generation = (slotNotificationGenerations[key] or 0) + 1
+    slotNotificationGenerations[key] = generation
 
-    local observers = {}
-    for _, callback in pairs(slotObservers) do
-        observers[#observers + 1] = callback
+    if not pendingSlotNotifications[key] then
+        pendingSlotOrder[#pendingSlotOrder + 1] = key
     end
-    for _, callback in ipairs(observers) do
-        callback(barId, slotId, copySnapshot(snapshot))
+    pendingSlotNotifications[key] = {
+        barId = barId,
+        slotId = slotId,
+        snapshot = snapshot,
+        generation = generation
+    }
+
+    if slotNotificationDispatching then
+        return true
+    end
+
+    slotNotificationDispatching = true
+    local ok, dispatchError = pcall(function()
+        local queueIndex = 1
+        while queueIndex <= #pendingSlotOrder do
+            local pendingKey = pendingSlotOrder[queueIndex]
+            queueIndex = queueIndex + 1
+            local notification = pendingSlotNotifications[pendingKey]
+            pendingSlotNotifications[pendingKey] = nil
+
+            if notification then
+                local observers = {}
+                for observerId, callback in pairs(slotObservers) do
+                    observers[#observers + 1] = {
+                        id = observerId,
+                        callback = callback
+                    }
+                end
+                table.sort(observers, function(left, right)
+                    return left.id < right.id
+                end)
+
+                for _, observer in ipairs(observers) do
+                    observer.callback(
+                        notification.barId,
+                        notification.slotId,
+                        copySnapshot(notification.snapshot))
+                    if slotNotificationGenerations[pendingKey] ~=
+                        notification.generation then
+                        break
+                    end
+                end
+            end
+        end
+    end)
+
+    slotNotificationDispatching = false
+    pendingSlotNotifications = {}
+    pendingSlotOrder = {}
+    if not ok then
+        error(dispatchError, 0)
     end
     return true
 end

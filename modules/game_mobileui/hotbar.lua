@@ -81,6 +81,57 @@ function Adapter:_renderSnapshot(slot, snapshot)
     slot:setOpacity(0.9)
   end
   slot.snapshot = snapshot
+  if not self.refreshingCooldown then
+    self:_syncCooldownRefresh()
+  end
+end
+
+function Adapter:_hasActiveCooldown()
+  for _, slot in ipairs(self.slots) do
+    local snapshot = slot.snapshot
+    if snapshot and snapshot.assigned and
+        (tonumber(snapshot.cooldownPercent) or 100) < 100 then
+      return true
+    end
+  end
+  return false
+end
+
+function Adapter:_cancelCooldownRefresh()
+  if not self.cooldownEvent then
+    return
+  end
+  self.cancel(self.cooldownEvent)
+  self.cooldownEvent = nil
+end
+
+function Adapter:_syncCooldownRefresh()
+  if not self.running or not self:_hasActiveCooldown() then
+    self:_cancelCooldownRefresh()
+    return
+  end
+  if self.cooldownEvent then
+    return
+  end
+
+  self.cooldownEvent = self.schedule(function()
+    self.cooldownEvent = nil
+    if not self.running then
+      return
+    end
+
+    self.refreshingCooldown = true
+    for _, slot in ipairs(self.slots) do
+      local snapshot = slot.snapshot
+      if snapshot and snapshot.assigned and
+          (tonumber(snapshot.cooldownPercent) or 100) < 100 then
+        self:_renderSnapshot(slot, self.actionbar.getSlotSnapshot(
+          SOURCE_BAR, slot.sourceSlotId))
+      end
+    end
+    self.refreshingCooldown = false
+    self:_syncCooldownRefresh()
+  end, self.cooldownRefreshInterval)
 end
 
 function Adapter:_renderSlot(index)
@@ -195,6 +246,7 @@ function Adapter:_rebuildSlots()
   if not self.panel or self.slotCount == 0 then
     return
   end
+  self:_cancelCooldownRefresh()
   self.panel:destroyChildren()
   self.slots = {}
   for index = 1, self.slotCount do
@@ -253,6 +305,7 @@ end
 
 function Adapter:onGameStart()
   self:onGameEnd()
+  self.running = true
   self.unsubscribe = self.actionbar.subscribeSlotChanges(
     function(barId, slotId, snapshot)
       self:onSlotChange(barId, slotId, snapshot)
@@ -262,6 +315,8 @@ function Adapter:onGameStart()
 end
 
 function Adapter:onGameEnd()
+  self.running = false
+  self:_cancelCooldownRefresh()
   if self.unsubscribe then
     self.unsubscribe()
     self.unsubscribe = nil
@@ -288,10 +343,16 @@ function MobileHotbar.create(options)
       return g_clock.millis()
     end,
     createWidget = options.createWidget or g_ui.createWidget,
+    schedule = options.schedule or scheduleEvent,
+    cancel = options.cancel or removeEvent,
+    cooldownRefreshInterval =
+      tonumber(options.cooldownRefreshInterval) or 100,
     swipeThreshold = tonumber(options.swipeThreshold) or 36,
     page = 1,
     slotCount = 0,
-    slots = {}
+    slots = {},
+    running = false,
+    refreshingCooldown = false
   }, Adapter)
 
   local persisted = validPage(adapter:_readPage())
