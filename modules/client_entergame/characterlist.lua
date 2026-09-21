@@ -1190,7 +1190,7 @@ function CharacterList.updateCharactersAppearance(widget, characterInfo, showOut
     end
 
     if activeMobileLayout then
-        widget:setHeight(72)
+        widget:setHeight(64)
     else
         widget:setHeight(showOutfits and 64 or 29)
     end
