@@ -11,7 +11,64 @@ function UIMessageBox.create(title, okCallback, cancelCallback)
     return calendar
 end
 
+local function mobileUiModule()
+    return modules and modules.client_mobileui
+end
+
+local function isMobileV2()
+    local mobileUi = mobileUiModule()
+    return mobileUi and mobileUi.isV2Enabled and mobileUi.isV2Enabled() or false
+end
+
+local function displayMobileMessageBox(title, message, buttons, onEnterCallback, onEscapeCallback)
+    local mobileUi = mobileUiModule()
+    local profile = mobileUi.getProfile()
+    local content = g_ui.createWidget('Label')
+    content:setTextWrap(true)
+    content:setTextAlign(AlignTopLeft)
+    content:setWidth(math.max(48, math.floor(profile.usableWidth * 0.88) - 32))
+    content:setText(message)
+    content:resizeToText()
+    content:setHeight(math.max(48, content:getHeight() + 16))
+
+    local messageBox = UIMessageBox.internalCreate()
+    local modalButtons = {}
+    for _, button in ipairs(buttons or {}) do
+        table.insert(modalButtons, {
+            text = button.text,
+            callback = button.callback
+        })
+    end
+
+    local handle = mobileUi.showModal({
+        title = title,
+        body = content,
+        buttons = modalButtons,
+        onEnter = onEnterCallback,
+        onEscape = onEscapeCallback,
+        onClose = function()
+            if not messageBox or messageBox:isDestroyed() then
+                return
+            end
+            messageBox.mobileModalHandle = nil
+            if not messageBox.mobileModalDestroying then
+                messageBox:destroy()
+            end
+        end
+    })
+
+    messageBox.mobileModalHandle = handle
+    messageBox.title = handle.title
+    messageBox.content = content
+    messageBox.holder = handle.holder
+    return messageBox
+end
+
 function UIMessageBox.display(title, message, buttons, onEnterCallback, onEscapeCallback)
+    if isMobileV2() then
+        return displayMobileMessageBox(title, message, buttons, onEnterCallback, onEscapeCallback)
+    end
+
     local rootWidth = rootWidget and rootWidget:getWidth() or 956
     local rootHeight = rootWidget and rootWidget:getHeight() or 656
     local staticSizes = {
@@ -141,6 +198,16 @@ function UIMessageBox:addButton(text, callback)
         onClick = callback
     })
     return button
+end
+
+function UIMessageBox:onDestroy()
+    UIWindow.onDestroy(self)
+    local handle = self.mobileModalHandle
+    self.mobileModalHandle = nil
+    if handle and handle:isOpen() then
+        self.mobileModalDestroying = true
+        handle:close()
+    end
 end
 
 function UIMessageBox:ok()

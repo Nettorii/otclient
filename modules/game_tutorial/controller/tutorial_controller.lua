@@ -4,6 +4,15 @@ local INFO_HEIGHT = 227
 local ANIM_DURATION = 600
 local START_BUTTON_IMAGE = "/game_tutorial/assets/images/button_startplaying_idle"
 
+local function mobileUiModule()
+    return modules and modules.client_mobileui
+end
+
+local function isMobileV2()
+    local mobileUi = mobileUiModule()
+    return mobileUi and mobileUi.isV2Enabled and mobileUi.isV2Enabled() or false
+end
+
 TutorialController.vocations = TutorialVocations or {
     --[[
     {
@@ -65,7 +74,7 @@ end
 local function resetCard(w)
     if w.startButton then
         w.startButton:show()
-        w.startButton:setImageSource(START_BUTTON_IMAGE)
+        w.startButton:setImageSource(w.mobile and "" or START_BUTTON_IMAGE)
     end
     if w.selectButton then
         w.selectButton:setChecked(false)
@@ -77,7 +86,7 @@ local function resetCard(w)
         w.highlight:hide()
     end
     if w.info then
-        w.info:setMarginTop(INFO_HEIGHT)
+        w.info:setMarginTop(w.mobile and 0 or INFO_HEIGHT)
     end
 end
 
@@ -160,6 +169,7 @@ local function setupCards(self)
         return false
     end
     self.vocationWidgets = {}
+    local mobileLayout = isMobileV2()
     for index, card in ipairs(cards) do
         local vocation = card.vocation or self.vocations[index]
         if vocation and vocation.id then
@@ -172,14 +182,33 @@ local function setupCards(self)
                 selectButton = startButton and startButton:querySelector(".actionButton"),
                 confirmPanel = confirmPanel,
                 confirmButton = confirmPanel and confirmPanel:querySelector(".actionButton"),
-                highlight = card:querySelector(".vocationSelectionHighlight")
+                highlight = card:querySelector(".vocationSelectionHighlight"),
+                mobile = mobileLayout
             }
 
             self.vocationWidgets[vocation.id] = widgets
-            bindCardHover(self, vocation.id, widgets)
+            if mobileLayout then
+                local handle = self.mobileModalHandle
+                if handle then
+                    handle:bindBodyWidget(card)
+                end
+            else
+                bindCardHover(self, vocation.id, widgets)
+            end
         end
     end
     return true
+end
+
+local function consumeMobileBodyGesture(self)
+    local handle = self.mobileModalHandle
+    return handle and handle:consumeBodyGesture() or false
+end
+
+local function clearTutorialUiState(self)
+    self.selectedVocation = nil
+    self.animTokens = {}
+    self.vocationWidgets = {}
 end
 
 local function applyVocationKeybinds(vocationName)
@@ -248,24 +277,52 @@ end
 -- =============================================*/
 
 function TutorialController:show()
+    if self.mobileModalHandle and self.mobileModalHandle:isOpen() then
+        self.mobileModalHandle.widget:raise()
+        self.mobileModalHandle.widget:focus()
+        self.mobileModalHandle.widget:grabKeyboard()
+        return
+    end
     if self.ui then
         self.ui:raise()
         self.ui:focus()
         return
     end
-    self:loadHtml("template/html/tutorial.html")
+
+    local mobileLayout = isMobileV2()
+    self:loadHtml(mobileLayout and "template/html/tutorial-mobile.html" or "template/html/tutorial.html")
     if not self.ui then
-        g_logger.error("[game_tutorial] failed to load tutorial.html")
+        g_logger.error("[game_tutorial] failed to load tutorial layout")
         return
+    end
+
+    if mobileLayout then
+        local tutorialUi = self.ui
+        tutorialUi:hide()
+        local handle = mobileUiModule().showModal({
+            title = tr('Choose Your Path'),
+            body = tutorialUi,
+            buttons = {},
+            onClose = function()
+                clearTutorialUiState(self)
+                self.mobileModalHandle = nil
+                if self.ui then
+                    self:unloadHtml()
+                end
+            end
+        })
+        self.mobileModalHandle = handle
+        tutorialUi:show()
+        handle:bindBodyWidget(tutorialUi)
     end
 end
 
 function TutorialController:hide()
-    self.selectedVocation = nil
-    self.animTokens = {}
-    self.vocationWidgets = {}
+    clearTutorialUiState(self)
 
-    if self.ui then
+    if self.mobileModalHandle then
+        self.mobileModalHandle:close()
+    elseif self.ui then
         self:unloadHtml()
     end
 end
@@ -279,9 +336,15 @@ function TutorialController:onVocationCardsRendered()
         return
     end
     resetAllCards(self)
-    self.ui:show()
-    self.ui:raise()
-    self.ui:focus()
+    if self.mobileModalHandle then
+        self.mobileModalHandle:bindBodyWidget(self.ui)
+        self.mobileModalHandle.widget:raise()
+        self.mobileModalHandle.widget:focus()
+    else
+        self.ui:show()
+        self.ui:raise()
+        self.ui:focus()
+    end
 end
 
 function TutorialController:getSpellIconSource()
@@ -297,6 +360,9 @@ function TutorialController:getSpellImageClip(clientId)
 end
 
 function TutorialController:selectVocation(vocationId)
+    if consumeMobileBodyGesture(self) then
+        return
+    end
     local vocation = findVocation(vocationId)
     if not vocation then
         g_logger.error("[game_tutorial] unknown vocation: " .. tostring(vocationId))
@@ -327,6 +393,9 @@ function TutorialController:selectVocation(vocationId)
 end
 
 function TutorialController:confirmVocation()
+    if consumeMobileBodyGesture(self) then
+        return
+    end
     local vocation = self.selectedVocation
     if not vocation then
         return
@@ -335,6 +404,13 @@ function TutorialController:confirmVocation()
     applyVocationKeybinds(vocation.name)
     applyVocationUI(self)
     self:hide()
+end
+
+function TutorialController:continueTutorial()
+    if consumeMobileBodyGesture(self) then
+        return
+    end
+    self:setTutorialStep(0)
 end
 
 function TutorialController:setTutorialStep(step)

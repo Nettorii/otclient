@@ -4,7 +4,7 @@ Module
   author: OTClient team
   website: https://github.com/mehah/otclient
   sandboxed: true
-  scripts: [ profile, state, mobileui ]
+  scripts: [ profile, state, modalhost, mobileui ]
   dependencies: [ client_styles ]
   @onLoad: init()
   @onUnload: terminate()

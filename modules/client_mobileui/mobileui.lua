@@ -53,9 +53,11 @@ end
 
 function init()
   g_ui.importStyle('mobileui.otui')
+  g_ui.importStyle('modalhost.otui')
   initProfile()
 end
 
 function terminate()
+  terminateModalHost()
   terminateProfile()
 end

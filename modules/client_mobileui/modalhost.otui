@@ -1,0 +1,78 @@
+MobileModalButton < QtButton
+  height: 48
+  min-width: 48
+  font: verdana-11px-antialised
+
+MobileModalBackdrop < Panel
+  anchors.fill: parent
+  background-color: #02060acc
+  focusable: true
+  phantom: false
+
+  MobileUISurface
+    id: modalSurface
+    background-color: #0b131eee
+    border-width: 1
+    border-color: #7891a477
+    clipping: true
+
+    Panel
+      id: modalHeader
+      anchors.left: parent.left
+      anchors.right: parent.right
+      anchors.top: parent.top
+      height: 48
+      background-color: #152333ee
+      border-width-bottom: 1
+      border-color-bottom: #7891a466
+
+      Label
+        id: modalTitle
+        anchors.fill: parent
+        margin-left: 14
+        margin-right: 14
+        color: #e5edf4
+        font: verdana-11px-antialised
+        text-align: left
+        text-wrap: true
+
+    UIScrollArea
+      id: modalBody
+      anchors.left: parent.left
+      anchors.right: modalBodyScrollBar.left
+      anchors.top: modalHeader.bottom
+      anchors.bottom: modalFooter.top
+      margin: 8
+      margin-right: 4
+      vertical-scrollbar: modalBodyScrollBar
+      clipping: true
+      layout:
+        type: verticalBox
+        spacing: 6
+
+    VerticalScrollBar
+      id: modalBodyScrollBar
+      anchors.top: modalHeader.bottom
+      anchors.bottom: modalFooter.top
+      anchors.right: parent.right
+      margin-top: 8
+      margin-right: 6
+      margin-bottom: 8
+      step: 48
+      pixels-scroll: true
+
+    Panel
+      id: modalFooter
+      anchors.left: parent.left
+      anchors.right: parent.right
+      anchors.bottom: parent.bottom
+      height: 48
+      padding-left: 8
+      padding-right: 8
+      background-color: #101c29ee
+      border-width-top: 1
+      border-color-top: #7891a455
+      layout:
+        type: horizontalBox
+        spacing: 8
+        align-right: true

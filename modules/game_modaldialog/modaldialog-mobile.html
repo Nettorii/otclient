@@ -1,0 +1,49 @@
+<style>
+    .mobile-modal-content {
+        width: 600px;
+        height: 120px;
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        padding: 0;
+        background-color: alpha;
+    }
+    .modal-message {
+        width: 600px;
+        min-height: 48px;
+        color: #d8e1e9;
+        text-align: left;
+        white-space: pre-wrap;
+        --text-auto-resize: true;
+        --text-wrap: true;
+    }
+    .choice-list {
+        width: 100%;
+        min-height: 48px;
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+        background-color: #09111bee;
+        --padding: 2 2 2 2;
+        --border-width: 1;
+        --border-color: #52687a66;
+    }
+    .choice-item {
+        width: 100%;
+        height: 48px;
+        padding: 10px;
+        color: #cbd7e1;
+        background-color: #111e2bee;
+        cursor: pointer;
+    }
+    .choice-item:nth-child(even) { background-color: #152534ee; }
+    .choice-item:hover { background-color: #263b4c; color: #ffffff; }
+    .choice-item:focus { background-color: #31506a; color: #ffffff; }
+</style>
+
+<html>
+<div id="modalDialog" class="mobile-modal-content">
+    <div id="messageLabel" class="modal-message"></div>
+    <div id="choiceList" class="choice-list"></div>
+</div>
+</html>

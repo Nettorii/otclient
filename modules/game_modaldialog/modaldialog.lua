@@ -8,7 +8,22 @@ local MAXIMUM_CHOICES = 10
 local BASE_HEIGHT = 40
 local MAX_CHOICE_TEXT = 28
 
+local function mobileUiModule()
+    return modules and modules.client_mobileui
+end
+
+local function isMobileV2()
+    local mobileUi = mobileUiModule()
+    return mobileUi and mobileUi.isV2Enabled and mobileUi.isV2Enabled() or false
+end
+
 local function destroyWindow()
+    local modalHandle = controllerModal.mobileModalHandle
+    if modalHandle then
+        modalHandle:close()
+        return
+    end
+
     local ui = controllerModal.ui
     if ui then
         controllerModal:unloadHtml()
@@ -118,6 +133,129 @@ local function applyFinalHeight(ui, messageLabel, additionalHeight)
     controllerModal:findWidget('#choiceList'):setWidth(ui:getWidth() * 0.9) -- html not work "Width:100%"
 end
 
+local function showMobileModalDialog(id, title, message, buttons, enterButton, escapeButton, choices)
+    controllerModal:loadHtml('modaldialog-mobile.html')
+    local ui = controllerModal.ui
+    if not ui then
+        return
+    end
+    ui:hide()
+
+    local mobileUi = mobileUiModule()
+    local profile = mobileUi.getProfile()
+    local contentWidth = math.max(48, math.floor(profile.usableWidth * 0.88) - 32)
+    local messageLabel = controllerModal:findWidget('#messageLabel')
+    local choiceList = controllerModal:findWidget('#choiceList')
+    local firstChoiceWidget
+    local confirmKeysEnabledAt = g_clock.millis() + 180
+
+    ui:setWidth(contentWidth)
+    messageLabel:setWidth(contentWidth)
+    messageLabel:html(message)
+
+    local enterFunc = createButtonHandler(id, enterButton, choiceList)
+    local escapeFunc = createButtonHandler(id, escapeButton, choiceList)
+    if #choices > 0 then
+        choiceList:setVisible(true)
+        for i, choiceData in ipairs(choices) do
+            local choiceId = choiceData[1]
+            local choiceName = choiceData[2]
+            local displayName = shortText(choiceName, MAX_CHOICE_TEXT)
+            local choiceHtml = string.format(
+                '<div class="choice-item" data-choice-id="%d">%s</div>', choiceId, displayName)
+            local choiceWidget = controllerModal:createWidgetFromHTML(choiceHtml, choiceList)
+            if choiceWidget then
+                choiceWidget.choiceId = choiceId
+                choiceWidget.choiceIndex = i
+                if #choiceName > MAX_CHOICE_TEXT then
+                    choiceWidget:setTooltip(choiceName)
+                end
+                choiceWidget.onClick = function()
+                    local handle = controllerModal.mobileModalHandle
+                    if handle and handle:consumeBodyGesture() then
+                        return
+                    end
+                    selectChoiceWidget(choiceList, choiceWidget, MouseFocusReason)
+                end
+                choiceWidget.onDoubleClick = function()
+                    local handle = controllerModal.mobileModalHandle
+                    if handle and handle:consumeBodyGesture() then
+                        return
+                    end
+                    enterFunc()
+                end
+                if not firstChoiceWidget then
+                    firstChoiceWidget = choiceWidget
+                end
+            end
+        end
+    else
+        choiceList:setVisible(false)
+    end
+
+    local modalButtons = {}
+    for _, buttonData in ipairs(buttons) do
+        table.insert(modalButtons, {
+            text = buttonData[2],
+            callback = createButtonHandler(id, buttonData[1], choiceList)
+        })
+    end
+
+    local function canConfirm()
+        return ui and not ui:isDestroyed() and ui:isVisible() and
+            g_clock.millis() >= confirmKeysEnabledAt
+    end
+
+    local handle = mobileUi.showModal({
+        title = title,
+        body = ui,
+        buttons = modalButtons,
+        onEnter = function()
+            if canConfirm() then
+                enterFunc()
+            end
+        end,
+        onEscape = function()
+            if canConfirm() then
+                escapeFunc()
+            end
+        end,
+        onKeyDown = function(keyCode)
+            if not canConfirm() then
+                return true
+            end
+            if keyCode == KeyUp and choiceList:isVisible() then
+                choiceList:focusPreviousChild(KeyboardFocusReason)
+                selectChoiceWidget(choiceList, choiceList:getFocusedChild(), KeyboardFocusReason)
+                return true
+            end
+            if keyCode == KeyDown and choiceList:isVisible() then
+                choiceList:focusNextChild(KeyboardFocusReason)
+                selectChoiceWidget(choiceList, choiceList:getFocusedChild(), KeyboardFocusReason)
+                return true
+            end
+            return false
+        end,
+        onClose = function()
+            controllerModal.mobileModalHandle = nil
+            if controllerModal.ui then
+                controllerModal:unloadHtml()
+            end
+        end
+    })
+    controllerModal.mobileModalHandle = handle
+
+    local choicesHeight = #choices > 0 and math.max(48, #choices * 48) or 0
+    choiceList:setHeight(choicesHeight)
+    ui:setHeight(math.max(48, messageLabel:getHeight()) + choicesHeight + 16)
+    ui:show()
+    handle:bindBodyWidget(ui)
+    confirmKeysEnabledAt = g_clock.millis() + 180
+    if firstChoiceWidget then
+        selectChoiceWidget(choiceList, firstChoiceWidget, KeyboardFocusReason)
+    end
+end
+
 function onModalDialog(id, title, message, buttons, enterButton, escapeButton, choices, priority)
     destroyWindow()
 
@@ -130,6 +268,11 @@ function onModalDialog(id, title, message, buttons, enterButton, escapeButton, c
         enterButton, escapeButton = escapeButton, enterButton
     end
     enterButton, escapeButton = resolveModalButtons(buttons, enterButton, escapeButton)
+    if isMobileV2() then
+        showMobileModalDialog(id, title, message, buttons, enterButton, escapeButton, choices)
+        return
+    end
+
     local MINIMUM_WIDTH = g_game.getFeature(GameEnterGameShowAppearance) and MINIMUM_WIDTH_OLD or MINIMUM_WIDTH_QT
     controllerModal:loadHtml('modaldialog.html')
     local ui = controllerModal.ui
