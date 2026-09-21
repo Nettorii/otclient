@@ -1,0 +1,10 @@
+Module
+  name: client_mobileui
+  description: Shared responsive mobile profile and shell state
+  author: OTClient team
+  website: https://github.com/mehah/otclient
+  sandboxed: true
+  scripts: [ profile, state, mobileui ]
+  dependencies: [ client_styles ]
+  @onLoad: init()
+  @onUnload: terminate()

@@ -1,0 +1,4 @@
+MobileUISurface < Panel
+  background-color: #111927dd
+  border-width: 1
+  border-color: #7b96a455

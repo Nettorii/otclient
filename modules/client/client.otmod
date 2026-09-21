@@ -11,6 +11,7 @@ Module
 
   load-later:
     - client_styles
+    - client_mobileui
     - client_locales
     - client_topmenu
     - client_bottommenu
