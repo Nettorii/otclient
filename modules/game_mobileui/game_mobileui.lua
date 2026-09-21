@@ -153,6 +153,30 @@ local function applyRect(widget, geometry)
   end
 end
 
+local function synchronizeJoystick(bounds)
+  local joystick = modules.game_joystick
+  if not joystick or not joystick.setEnabled then
+    return
+  end
+
+  if bounds and joystick.setBounds then
+    joystick.setEnabled(false)
+    joystick.setBounds(bounds)
+  end
+
+  local visible = gameActive and controlsFit and hud and
+    not hud:isDestroyed() and hud:isVisible()
+  if visible then
+    joystick.show()
+  else
+    joystick.hide()
+  end
+
+  local state, owner = modules.client_mobileui.getForeground()
+  joystick.setEnabled(
+    visible and state == 'gameplay' and owner == foregroundOwner)
+end
+
 local function applyComputedLayout(layout)
   if not hud or hud:isDestroyed() then
     return
@@ -199,6 +223,7 @@ local function applyComputedLayout(layout)
     end
   end
 
+  synchronizeJoystick(layout.joystickHost)
   setControlsVisible(true)
 end
 
@@ -230,6 +255,7 @@ function setControlsVisible(visible)
   if hud:isVisible() ~= visible then
     hud:setVisible(visible)
   end
+  synchronizeJoystick()
   return true
 end
 
@@ -275,10 +301,16 @@ end
 
 function foregroundOwner:onForegroundGained()
   if not gameActive then
+    synchronizeJoystick()
     releaseGameplayForeground()
     return
   end
+  synchronizeJoystick()
   raiseGameplayHud()
+end
+
+function foregroundOwner:onForegroundLost()
+  synchronizeJoystick()
 end
 
 local function onGameStart()

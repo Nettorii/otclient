@@ -273,7 +273,13 @@ function WalkController:onGameStart()
     })
 
     modules.game_interface.getRootPanel().onFocusChange = stopSmartWalk
-    modules.game_joystick.addOnJoystickMoveListener(function(dir) g_game.walk(dir) end)
+    -- the joystick fires every 20 ms while held: go through walk() (canWalk /
+    -- walkable-tile checks) instead of g_game.walk(), which always sends a packet
+    -- and gets the player kicked for "exceeding packet per second limit" when
+    -- held against a wall
+    modules.game_joystick.addOnJoystickMoveListener(function(dir, firstStep)
+        walk(dir, firstStep)
+    end)
 
     if not g_game.isOfficialTibia() then
         g_game.enableFeature(GameForceFirstAutoWalkStep)
