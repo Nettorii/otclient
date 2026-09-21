@@ -242,7 +242,7 @@ local function acquireGameplayForeground()
   if state == 'gameplay' and owner == foregroundOwner then
     return true
   end
-  if state ~= nil or owner ~= nil then
+  if state ~= 'gameplay' or owner ~= nil then
     return false
   end
 
