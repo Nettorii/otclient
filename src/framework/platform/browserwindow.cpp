@@ -32,6 +32,12 @@
 
 BrowserWindow& g_browserWindow = (BrowserWindow&)g_window;
 
+extern "C" EMSCRIPTEN_KEEPALIVE void mobile_viewport_changed(
+    int left, int top, int right, int bottom, int keyboardHeight)
+{
+    g_browserWindow.setViewportMetrics({ left, top, right, bottom, keyboardHeight });
+}
+
 stdext::map<char, Fw::Key> m_keyMapStr;
 EmscriptenWebGLContextAttributes attr;
 
