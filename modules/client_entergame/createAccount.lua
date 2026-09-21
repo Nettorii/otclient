@@ -7,6 +7,10 @@ local privacyCheckbox = nil
 local startPlayingButton = nil
 local accountBodyScroller = nil
 local worldBodyScroller = nil
+local worldListScroller = nil
+local suggestNameButton = nil
+local changeWorldButton = nil
+local suppressPrivacyCallback = false
 
 local UIwidgetImagen = {
     AccountData = nil,
@@ -84,54 +88,6 @@ local function childForLayout(parent, id)
     return parent:getChildById(id)
 end
 
-local function createTouchScroller(scrollBar)
-    local lastY
-    local dragDistance = 0
-    local dragged = false
-
-    local function onMousePress(widget, position, button)
-        if button ~= MouseLeftButton then return false end
-        lastY = position.y
-        dragDistance = 0
-        dragged = false
-        return false
-    end
-
-    local function onMouseMove(widget, position)
-        if not lastY or not g_mouse.isPressed(MouseLeftButton) then
-            return false
-        end
-
-        local delta = lastY - position.y
-        lastY = position.y
-        dragDistance = dragDistance + math.abs(delta)
-        if dragDistance >= 6 then
-            dragged = true
-            scrollBar:setValue(scrollBar:getValue() + delta)
-        end
-        return dragged
-    end
-
-    local function onMouseRelease(widget, position, button)
-        if button ~= MouseLeftButton then return false end
-        lastY = nil
-        return dragged
-    end
-
-    local function bind(widget)
-        if not widget then return end
-        connect(widget, {
-            onMousePress = onMousePress,
-            onMouseMove = onMouseMove,
-            onMouseRelease = onMouseRelease
-        })
-    end
-
-    return {
-        bind = bind
-    }
-end
-
 local function bindTouchScrollerTree(scroller, widget)
     if not scroller or not widget then return end
     scroller.bind(widget)
@@ -150,13 +106,49 @@ local function setupMobileLayout()
 
     local accountBody = MainWindowsCreateAccount:recursiveGetChildById('accountBody')
     local accountScrollBar = MainWindowsCreateAccount:recursiveGetChildById('accountBodyScrollBar')
-    accountBodyScroller = createTouchScroller(accountScrollBar)
+    accountBodyScroller = MobileScrollGesture.create(accountScrollBar)
     bindTouchScrollerTree(accountBodyScroller, accountBody)
 
     local worldBody = MainWindowsCreateAccount:recursiveGetChildById('worldBody')
     local worldScrollBar = MainWindowsCreateAccount:recursiveGetChildById('worldBodyScrollBar')
-    worldBodyScroller = createTouchScroller(worldScrollBar)
-    bindTouchScrollerTree(worldBodyScroller, worldBody)
+    worldBodyScroller = MobileScrollGesture.create(worldScrollBar)
+    worldBodyScroller.bind(worldBody)
+
+    local worldListScrollBar = MainWindowsCreateAccount:recursiveGetChildById('ListScrollBar')
+    worldListScroller = MobileScrollGesture.create(worldListScrollBar)
+    worldListScroller.bind(UITextList.listAllWorlds)
+
+    local male = MainWindowsCreateAccount:recursiveGetChildById('Male')
+    local female = MainWindowsCreateAccount:recursiveGetChildById('Female')
+    local sexRollback = {
+        capture = function()
+            return sexModeGroup:getSelectedWidget()
+        end,
+        restore = function(_, selected)
+            sexModeGroup:selectWidget(selected)
+        end
+    }
+    accountBodyScroller.bind(male, sexRollback)
+    accountBodyScroller.bind(female, sexRollback)
+    accountBodyScroller.bind(privacyCheckbox, {
+        capture = function(widget)
+            return widget:isChecked()
+        end,
+        restore = function(widget, checked)
+            suppressPrivacyCallback = true
+            widget:setChecked(checked)
+            suppressPrivacyCallback = false
+        end
+    })
+
+    suggestNameButton.onClick = function()
+        if accountBodyScroller.consumeAction(suggestNameButton) then return end
+        onClickSuggestName()
+    end
+    changeWorldButton.onClick = function()
+        if accountBodyScroller.consumeAction(changeWorldButton) then return end
+        toggleMainPanels(true)
+    end
 end
 
 -- /*=============================================
@@ -542,6 +534,8 @@ end
 
 local function behavioronCheckChange()
     privacyCheckbox.onCheckChange = function(widget, checked)
+        if suppressPrivacyCallback then return end
+        if accountBodyScroller and accountBodyScroller.consumeAction(widget) then return end
         setRequirementState(widget:getParent():getChildById('icons'), checked)
     end
 end
@@ -686,8 +680,8 @@ local function initializeWorldsList(worlds)
         widget:setId(world.Name)
         widget:getChildById('details'):setText(world.Name)
         widget:setBackgroundColor(i % 2 == 0 and "#ffffff12" or "#00000012")
-        if worldBodyScroller then
-            bindTouchScrollerTree(worldBodyScroller, widget)
+        if worldListScroller then
+            bindTouchScrollerTree(worldListScroller, widget)
         end
         if i == 1 then
             focusLabel = widget
@@ -829,6 +823,8 @@ function createWidgetAccount()
             UITextEdit.character = childForLayout(textFields, 'textEditCharacter')
             privacyCheckbox = childForLayout(panelCheckBox, 'checkboxPrivacy')
             startPlayingButton = childForLayout(createAccountPanel, 'buttonStartPlaying')
+            suggestNameButton = childForLayout(panelCharacterName, 'suggestName')
+            changeWorldButton = childForLayout(panelRecommendedWorld, 'changeWorld')
 -- LuaFormatter on
 
             globalInfo.selectedWorld = data.RecommendedWorld
@@ -945,6 +941,10 @@ function destroyCreateAccount()
         startPlayingButton = nil
         accountBodyScroller = nil
         worldBodyScroller = nil
+        worldListScroller = nil
+        suggestNameButton = nil
+        changeWorldButton = nil
+        suppressPrivacyCallback = false
         Worlds = {}
         lastRequestTime = {}
     end

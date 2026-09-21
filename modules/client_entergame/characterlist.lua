@@ -18,6 +18,7 @@ local premiumBenefitsPanel
 local premiumButton
 local suppressCheckCallbacks = false
 local characterTouchScroller
+local activeMobileLayout = false
 
 local function mobileUiModule()
     return modules and modules.client_mobileui
@@ -35,16 +36,29 @@ local function windowChild(id)
     return charactersWindow:getChildById(id)
 end
 
-local function createTouchScroller(scrollBar)
+MobileScrollGesture = MobileScrollGesture or {}
+
+function MobileScrollGesture.create(scrollBar)
     local lastY
     local dragDistance = 0
     local dragged = false
+    local active = false
+    local rollbacks = setmetatable({}, { __mode = 'k' })
+    local rollbackStates = setmetatable({}, { __mode = 'k' })
 
     local function onMousePress(widget, position, button)
         if button ~= MouseLeftButton then return false end
-        lastY = position.y
-        dragDistance = 0
-        dragged = false
+        if not active then
+            active = true
+            lastY = position.y
+            dragDistance = 0
+            dragged = false
+            rollbackStates = setmetatable({}, { __mode = 'k' })
+        end
+        local rollback = rollbacks[widget]
+        if rollback and rollbackStates[widget] == nil then
+            rollbackStates[widget] = rollback.capture(widget)
+        end
         return false
     end
 
@@ -63,24 +77,41 @@ local function createTouchScroller(scrollBar)
         return dragged
     end
 
+    local function restore(widget)
+        local rollback = rollbacks[widget]
+        local state = rollbackStates[widget]
+        if rollback and state ~= nil then
+            rollback.restore(widget, state)
+        end
+    end
+
     local function onMouseRelease(widget, position, button)
         if button ~= MouseLeftButton then return false end
+        if dragged then
+            restore(widget)
+        end
+        active = false
         lastY = nil
         return dragged
     end
 
     return {
-        bind = function(widget)
+        bind = function(widget, rollback)
+            rollbacks[widget] = rollback
             connect(widget, {
                 onMousePress = onMousePress,
                 onMouseMove = onMouseMove,
                 onMouseRelease = onMouseRelease
             })
         end,
-        consumeClick = function()
-            local consumed = dragged
-            dragged = false
-            return consumed
+        consumeAction = function(widget)
+            if not dragged then
+                return false
+            end
+            if widget then
+                restore(widget)
+            end
+            return true
         end
     }
 end
@@ -139,6 +170,7 @@ local function resetUIReferences()
     premiumBenefitsPanel = nil
     premiumButton = nil
     characterTouchScroller = nil
+    activeMobileLayout = false
 end
 
 local function toBoolean(value, default)
@@ -172,7 +204,7 @@ local function isPremiumAccount(account)
 end
 
 local function updatePremiumBenefitsVisibility(account)
-    local showBenefits = not isMobileV2() and shouldShowAppearance() and SHOW_PREMIUM_WIDGETS and
+    local showBenefits = not activeMobileLayout and shouldShowAppearance() and SHOW_PREMIUM_WIDGETS and
                              not isPremiumAccount(account)
     if premiumBenefitsPanel then
         premiumBenefitsPanel:setVisible(showBenefits)
@@ -620,6 +652,7 @@ end
 
 function onPinCharacter(widget, isChecked)
     if suppressCheckCallbacks then return end
+    if characterTouchScroller and characterTouchScroller.consumeAction(widget) then return end
     if not shouldShowAppearance() then return end
 
     local parentWidget = widget and widget:getParent()
@@ -765,12 +798,14 @@ function CharacterList.create(characters, account, otui)
     premiumBenefitsPanel = windowChild('premiumBenefitsPanel')
     premiumButton = windowChild('premiumButton')
 
-    if isMobileV2() then
+    local surface = charactersWindow:recursiveGetChildById('characterSurface')
+    local characterListScrollBar = charactersWindow:recursiveGetChildById('characterListScrollBar')
+    activeMobileLayout = isMobileV2() and surface ~= nil and characterListScrollBar ~= nil
+    if activeMobileLayout then
         local profile = mobileUiModule().getProfile()
-        local surface = windowChild('characterSurface')
         surface:setWidth(math.min(700, profile.usableWidth - 24))
         surface:setHeight(math.min(620, profile.usableHeight - 24))
-        characterTouchScroller = createTouchScroller(windowChild('characterListScrollBar'))
+        characterTouchScroller = MobileScrollGesture.create(characterListScrollBar)
         characterTouchScroller.bind(characterList)
     end
 
@@ -849,7 +884,7 @@ function CharacterList.create(characters, account, otui)
 end
 
 function CharacterList.play(characterWidget)
-    if characterTouchScroller and characterTouchScroller.consumeClick() then
+    if characterTouchScroller and characterTouchScroller.consumeAction(characterWidget) then
         return
     end
     if not characterWidget then
@@ -861,6 +896,25 @@ function CharacterList.play(characterWidget)
         list:focusChild(characterWidget, MouseFocusReason)
     end
     CharacterList.doLogin()
+end
+
+function CharacterList.bindCharacterActions(widget, mobileLayout)
+    local playButton = widget:getChildById('play')
+    if mobileLayout then
+        if playButton then
+            playButton.onClick = function()
+                CharacterList.play(widget)
+            end
+        end
+        return
+    end
+
+    connect(widget, {
+        onDoubleClick = function()
+            CharacterList.doLogin()
+            return true
+        end
+    })
 end
 
 function CharacterList.rebuildCharactersList()
@@ -929,17 +983,22 @@ function CharacterList.rebuildCharactersList()
             setCheckedWithoutCallback(pinButton, isCharacterPinned(widget.characterName, widget.worldName, pinnedLookup))
         end
 
-        connect(widget, {
-            onDoubleClick = function()
-                CharacterList.doLogin()
-                return true
-            end
-        })
+        CharacterList.bindCharacterActions(widget, activeMobileLayout)
         if characterTouchScroller then
             characterTouchScroller.bind(widget)
             local playButton = widget:getChildById('play')
             if playButton then
                 characterTouchScroller.bind(playButton)
+            end
+            if pinButton then
+                characterTouchScroller.bind(pinButton, {
+                    capture = function(button)
+                        return button:isChecked()
+                    end,
+                    restore = function(button, checked)
+                        setCheckedWithoutCallback(button, checked)
+                    end
+                })
             end
         end
 
@@ -1112,7 +1171,7 @@ function CharacterList.updateCharactersAppearance(widget, characterInfo, showOut
         nameLabel:setMarginLeft(showOutfits and 65 or 5)
     end
 
-    if isMobileV2() then
+    if activeMobileLayout then
         widget:setHeight(72)
     else
         widget:setHeight(showOutfits and 64 or 29)

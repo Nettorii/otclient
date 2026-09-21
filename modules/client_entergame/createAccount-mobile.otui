@@ -265,7 +265,6 @@ UIWindow
                 margin-right: 8
                 width: 112
                 !text: tr('Suggest Name')
-                @onClick: onClickSuggestName()
 
               UIWidget
                 id: icons
@@ -351,7 +350,6 @@ UIWindow
                 margin-right: 8
                 width: 112
                 !text: tr('Change World')
-                @onClick: toggleMainPanels(true)
 
               UIWidget
                 id: icons
@@ -555,9 +553,10 @@ UIWindow
         MiniPanel
           id: panelSelectAGameWorldToPlayOn
           !text: tr('Select a Game World to Play On')
-          size: 640 390
           anchors.left: parent.left
+          anchors.right: parent.right
           anchors.top: parent.top
+          height: 390
 
           Panel
             id: panelSelectworldAndPvp
