@@ -23,6 +23,7 @@
 
 #include "androidmanager.h"
 #include <framework/global.h>
+#include <framework/core/eventdispatcher.h>
 #include <framework/core/unzipper.h>
 #include <framework/core/resourcemanager.h>
 #include <framework/sound/soundmanager.h>
@@ -207,7 +208,9 @@ void Java_com_otclient_AndroidManager_nativeSetAudioEnabled(JNIEnv*, jobject, jb
 
 void Java_com_otclient_AndroidManager_nativeSetViewportMetrics(
         JNIEnv*, jobject, jint left, jint top, jint right, jint bottom, jint keyboardHeight) {
-    g_window.setViewportMetrics({left, top, right, bottom, keyboardHeight});
+    g_dispatcher.addEvent([left, top, right, bottom, keyboardHeight] {
+        g_window.setViewportMetrics({left, top, right, bottom, keyboardHeight});
+    });
 }
 
 }
