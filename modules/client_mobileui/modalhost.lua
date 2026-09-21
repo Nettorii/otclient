@@ -1,5 +1,5 @@
 local activeModal
-local replacementSnapshot
+local restorationSnapshots = {}
 local keyboardReceiverTracker
 local terminating = false
 
@@ -299,23 +299,16 @@ function showModal(config)
     previousOwner = activeModal.previousForegroundOwner
     previousFocusedWidget = activeModal.previousFocusedWidget
     previousKeyboardReceiver = activeModal.previousKeyboardReceiver
-    local outerSnapshot = replacementSnapshot
-    replacementSnapshot = {
-      state = previousState,
-      owner = previousOwner,
-      focusedWidget = previousFocusedWidget,
-      keyboardReceiver = previousKeyboardReceiver
-    }
     activeModal:replace()
-    replacementSnapshot = outerSnapshot
     local state, owner = getForeground()
     supersededDuringReplacement = activeModal ~= nil or
       state ~= (previousState or 'gameplay') or owner ~= previousOwner
-  elseif replacementSnapshot then
-    previousState = replacementSnapshot.state
-    previousOwner = replacementSnapshot.owner
-    previousFocusedWidget = replacementSnapshot.focusedWidget
-    previousKeyboardReceiver = replacementSnapshot.keyboardReceiver
+  elseif #restorationSnapshots > 0 then
+    local snapshot = restorationSnapshots[#restorationSnapshots]
+    previousState = snapshot.state
+    previousOwner = snapshot.owner
+    previousFocusedWidget = snapshot.focusedWidget
+    previousKeyboardReceiver = snapshot.keyboardReceiver
   else
     previousState, previousOwner = getForeground()
     previousFocusedWidget = getFocusedWidget()
@@ -399,7 +392,15 @@ function showModal(config)
       unsubscribeProfile = nil
     end
 
+    local restorationSnapshot = {
+      state = previousState,
+      owner = previousOwner,
+      focusedWidget = previousFocusedWidget,
+      keyboardReceiver = previousKeyboardReceiver
+    }
+    table.insert(restorationSnapshots, restorationSnapshot)
     safeCall(config.onClose)
+    table.remove(restorationSnapshots)
 
     local state, owner = getForeground()
     local ownsForeground = state == 'modal' and owner == handle
@@ -560,7 +561,6 @@ function terminateModalHost()
     activeModal:close()
   end
   activeModal = nil
-  replacementSnapshot = nil
   uninstallKeyboardReceiverTracker()
   terminating = false
 end
