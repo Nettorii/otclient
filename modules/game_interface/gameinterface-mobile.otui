@@ -1,0 +1,227 @@
+MobileCompatibilitySidePanel < UIMiniWindowContainer
+  size: 0 0
+  visible: false
+  focusable: false
+  on: false
+  layout:
+    type: verticalBox
+
+MobileCompatibilityPanel < Panel
+  size: 0 0
+  visible: false
+  focusable: false
+
+MobileCompatibilitySelector < CheckBox
+  size: 0 0
+  visible: false
+  focusable: false
+
+UIWidget
+  id: gameRootPanel
+  anchors.fill: parent
+  anchors.top: topMenu.bottom
+
+  UIGameMap
+    id: gameMapPanel
+    anchors.fill: parent
+    focusable: false
+
+    Button
+      id: showTopMenuButton
+      anchors.top: parent.top
+      anchors.left: parent.left
+      !text: tr('Show Top Menu')
+      size: 0 0
+      visible: false
+
+  MobileCompatibilityPanel
+    id: gameLeftActionPanel
+    anchors.top: parent.top
+    anchors.left: parent.left
+
+  UIWidget
+    id: lockLeftPanel
+    anchors.top: parent.top
+    anchors.left: parent.left
+    size: 0 0
+    visible: false
+    focusable: false
+
+    Button
+      id: leftLock
+      size: 0 0
+      visible: false
+      focusable: false
+
+  MobileCompatibilityPanel
+    id: gameRightActionPanel
+    anchors.top: parent.top
+    anchors.left: parent.left
+
+  UIWidget
+    id: lockRightPanel
+    anchors.top: parent.top
+    anchors.left: parent.left
+    size: 0 0
+    visible: false
+    focusable: false
+
+    Button
+      id: rightLock
+      size: 0 0
+      visible: false
+      focusable: false
+
+  MobileCompatibilityPanel
+    id: gameBottomActionPanel
+    anchors.top: parent.top
+    anchors.left: parent.left
+
+  UIWidget
+    id: lockPanel
+    anchors.top: parent.top
+    anchors.left: parent.left
+    size: 0 0
+    visible: false
+    focusable: false
+
+    Button
+      id: bottomLock
+      size: 0 0
+      visible: false
+      focusable: false
+
+  MobileCompatibilityPanel
+    id: gameBottomCooldownPanel
+    anchors.top: parent.top
+    anchors.left: parent.left
+
+  UIWindow
+    id: gameBottomPanel
+    anchors.top: parent.top
+    anchors.left: parent.left
+    size: 0 0
+    visible: false
+    focusable: false
+    draggable: false
+
+    ResizeBorder
+      id: bottomResizeBorder
+      size: 0 0
+      visible: false
+      enabled: false
+
+    ResizeBorder
+      id: rightResizeBorder
+      size: 0 0
+      visible: false
+      enabled: false
+
+  MobileCompatibilitySidePanel
+    id: gameLeftPanel
+    anchors.top: parent.top
+    anchors.left: parent.left
+
+  MobileCompatibilitySidePanel
+    id: gameLeftExtraPanel
+    anchors.top: parent.top
+    anchors.left: parent.left
+
+  MobileCompatibilitySidePanel
+    id: gameMainRightPanel
+    anchors.top: parent.top
+    anchors.left: parent.left
+    &ignoreFillAll: true
+    &onlyPhantomDrop: true
+
+  MobileCompatibilitySidePanel
+    id: gameRightPanel
+    anchors.top: parent.top
+    anchors.left: parent.left
+
+  MobileCompatibilitySidePanel
+    id: gameRightExtraPanel
+    anchors.top: parent.top
+    anchors.left: parent.left
+
+  MobileCompatibilitySelector
+    id: gameSelectLeftColumn
+    anchors.top: parent.top
+    anchors.left: parent.left
+
+  MobileCompatibilitySelector
+    id: gameSelectRightColumn
+    anchors.top: parent.top
+    anchors.left: parent.left
+
+  MobileCompatibilitySelector
+    id: gameSelectRightExtraColumn
+    anchors.top: parent.top
+    anchors.left: parent.left
+
+  MobileCompatibilitySelector
+    id: gameSelectLeftExtraColumn
+    anchors.top: parent.top
+    anchors.left: parent.left
+
+  Splitter
+    id: bottomSplitter
+    anchors.top: parent.top
+    anchors.left: parent.left
+    size: 0 0
+    visible: false
+    focusable: false
+
+  UIWidget
+    id: mouseGrabber
+    anchors.fill: parent
+    focusable: false
+    visible: false
+
+  TopStatsBar
+    id: gameTopPanel
+    anchors.top: parent.top
+    anchors.left: parent.left
+    size: 0 0
+    visible: false
+    focusable: false
+
+  TopStatsBar
+    id: gameBottomStatsBarPanel
+    anchors.top: parent.top
+    anchors.left: parent.left
+    size: 0 0
+    visible: false
+    focusable: false
+
+  Button
+    id: leftIncreaseSidePanels
+    anchors.top: parent.top
+    anchors.left: parent.left
+    size: 0 0
+    visible: false
+    focusable: false
+
+  Button
+    id: leftDecreaseSidePanels
+    anchors.top: parent.top
+    anchors.left: parent.left
+    size: 0 0
+    visible: false
+    focusable: false
+
+  Button
+    id: rightIncreaseSidePanels
+    anchors.top: parent.top
+    anchors.left: parent.left
+    size: 0 0
+    visible: false
+    focusable: false
+
+  Button
+    id: rightDecreaseSidePanels
+    anchors.top: parent.top
+    anchors.left: parent.left
+    size: 0 0
+    visible: false
+    focusable: false

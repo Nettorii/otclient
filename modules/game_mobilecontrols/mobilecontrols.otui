@@ -1,0 +1,153 @@
+MobileRoundButton < UIButton
+  size: 58 58
+  phantom: false
+  focusable: false
+  image-source: /images/game/mobile/keypad_pointer
+  image-fixed-ratio: true
+  opacity: 0.85
+  font: verdana-11px-rounded
+  color: #ffffff
+  text-align: bottom
+  text-offset: 0 -6
+  $pressed:
+    opacity: 1.0
+    color: #a0ffa0
+  $disabled:
+    opacity: 0.35
+
+  // the stock mobile icons are 48x48 with a caption in the lower 14 px: clip it
+  UIWidget
+    id: icon
+    size: 32 23
+    anchors.horizontalCenter: parent.horizontalCenter
+    anchors.top: parent.top
+    margin-top: 8
+    image-clip: 0 0 48 34
+    image-fixed-ratio: true
+    phantom: true
+
+MobileHotbarSlot < UIButton
+  size: 50 50
+  phantom: false
+  focusable: false
+  image-source: /images/game/actionbar/actionbarslot
+  image-border: 2
+  opacity: 0.9
+  $pressed:
+    image-color: #a0ffa0
+
+  Item
+    id: item
+    anchors.fill: parent
+    margin: 3
+    virtual: true
+    phantom: true
+    always-show-count: true
+    font: verdana-8px-rounded
+
+  Label
+    id: text
+    anchors.fill: parent
+    margin: 3
+    text-wrap: true
+    text-align: center
+    font: small-9px
+    phantom: true
+    image-fixed-ratio: true
+
+  UIProgressRect
+    id: cooldown
+    background: #101010aa
+    percent: 100
+    focusable: false
+    phantom: true
+    anchors.fill: parent
+    font: verdana-11px-rounded
+    color: white
+    visible: false
+
+UIWidget
+  id: mobileControls
+  anchors.fill: parent
+  focusable: false
+  phantom: true
+
+  UIWidget
+    id: hotbar
+    anchors.bottom: parent.bottom
+    anchors.horizontalCenter: parent.horizontalCenter
+    height: 54
+    width: 8
+    margin-bottom: 4
+    phantom: true
+    focusable: false
+    visible: false
+    layout:
+      type: horizontalBox
+      spacing: 4
+
+  UIWidget
+    id: cluster
+    anchors.right: parent.right
+    anchors.bottom: parent.bottom
+    size: 250 140
+    margin-right: 6
+    margin-bottom: 152
+    phantom: true
+    focusable: false
+    visible: false
+
+    MobileRoundButton
+      id: attack
+      anchors.right: parent.right
+      anchors.bottom: parent.bottom
+      size: 72 72
+      text: attack
+      text-offset: 0 -10
+      @onSetup: self.icon:setImageSource("/images/game/mobile/attack")
+
+    MobileRoundButton
+      id: stop
+      anchors.right: attack.left
+      anchors.bottom: parent.bottom
+      margin-right: 8
+      text: stop
+      @onSetup: self.icon:setImageSource("/images/game/mobile/follow")
+
+    MobileRoundButton
+      id: bag
+      anchors.right: stop.left
+      anchors.bottom: parent.bottom
+      margin-right: 8
+      text: bag
+      size: 52 52
+      text-offset: 0 -5
+      @onSetup: self.icon:setImageSource("/images/game/mobile/use")
+
+    MobileRoundButton
+      id: loot
+      anchors.right: parent.right
+      anchors.bottom: attack.top
+      margin-bottom: 8
+      text: loot
+      @onSetup: self.icon:setImageSource("/images/game/mobile/use")
+
+    MobileRoundButton
+      id: chat
+      anchors.right: loot.left
+      anchors.bottom: attack.top
+      margin-right: 8
+      margin-bottom: 8
+      text: chat
+      @onSetup: self.icon:setImageSource("/images/game/mobile/chat")
+
+    MobileRoundButton
+      id: menu
+      anchors.right: chat.left
+      anchors.bottom: attack.top
+      margin-right: 8
+      margin-bottom: 8
+      text: menu
+      size: 48 48
+      text-offset: 0 -4
+      @onSetup: self.icon:setImageSource("/images/game/mobile/look")

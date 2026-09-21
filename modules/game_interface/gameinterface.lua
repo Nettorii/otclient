@@ -47,6 +47,7 @@ local mobileConfig = {
     mobileHeightShortcuts = 0
 }
 local isExtendedViewActive = false
+local mobileV2 = false
 
 local function updateSidePanelButtons()
     leftIncreaseSidePanels:setEnabled(not modules.client_options.getOption('showLeftExtraPanel'))
@@ -96,7 +97,11 @@ function init()
         onExit = save
     })
 
-    gameRootPanel = g_ui.displayUI('gameinterface')
+    mobileV2 = modules.client_mobileui.isV2Enabled()
+    local interfaceFile = mobileV2
+        and 'gameinterface-mobile'
+        or 'gameinterface'
+    gameRootPanel = g_ui.displayUI(interfaceFile)
     gameRootPanel:hide()
     gameRootPanel:lower()
     gameRootPanel.onGeometryChange = updateStretchShrink
@@ -144,14 +149,18 @@ function init()
         checkbox = gameRootPanel:getChildById('gameSelectLeftExtraColumn')
     } }
 
-    panelsRadioGroup = UIRadioGroup.create()
-    for k, v in pairs(panelsList) do
-        panelsRadioGroup:addWidget(v.checkbox)
-        connect(v.checkbox, {
-            onCheckChange = onSelectPanel
-        })
+    if mobileV2 then
+        gameSelectedPanel = gameRightPanel
+    else
+        panelsRadioGroup = UIRadioGroup.create()
+        for k, v in pairs(panelsList) do
+            panelsRadioGroup:addWidget(v.checkbox)
+            connect(v.checkbox, {
+                onCheckChange = onSelectPanel
+            })
+        end
+        panelsRadioGroup:selectWidget(panelsList[1].checkbox)
     end
-    panelsRadioGroup:selectWidget(panelsList[1].checkbox)
 
     logoutButton = modules.client_topmenu.addTopRightToggleButton('logoutButton', tr('Exit'), '/images/topbuttons/logout',
         tryLogout, true)
@@ -246,10 +255,12 @@ function terminate()
         onLoginAdvice = onLoginAdvice
     })
 
-    for k, v in pairs(panelsList) do
-        disconnect(v.checkbox, {
-            onCheckChange = onSelectPanel
-        })
+    if panelsRadioGroup then
+        for k, v in pairs(panelsList) do
+            disconnect(v.checkbox, {
+                onCheckChange = onSelectPanel
+            })
+        end
     end
 
     logoutButton:destroy()
@@ -1748,6 +1759,10 @@ function nextViewMode()
 end
 
 function setupViewMode(mode)
+    if mobileV2 then
+        return
+    end
+
     if mode == currentViewMode then
         return
     end
@@ -1950,6 +1965,10 @@ function checkAndOpenLeftPanel()
 end
 
 function applyExtendedViewLayout(extendedView)
+    if mobileV2 then
+        return
+    end
+
     if extendedView == isExtendedViewActive then return end
     isExtendedViewActive = extendedView
 

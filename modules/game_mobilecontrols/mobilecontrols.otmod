@@ -1,0 +1,8 @@
+Module
+  name: game_mobilecontrols
+  description: Touch controls for phones/tablets (browser and Android): HUD scale, big joystick, target/action buttons, hotbar mirror of action bar 1
+  author: local
+  sandboxed: true
+  scripts: [ mobilecontrols ]
+  @onLoad: init()
+  @onUnload: terminate()
