@@ -230,9 +230,21 @@ function setControlsVisible(visible)
   if hud:isVisible() ~= visible then
     hud:setVisible(visible)
   end
-  if visible then
-    hud:raise()
+  return true
+end
+
+local function raiseGameplayHud()
+  if not hud or hud:isDestroyed() or not gameActive or
+      not controlsFit or not hud:isVisible() then
+    return false
   end
+
+  local state, owner = modules.client_mobileui.getForeground()
+  if state ~= 'gameplay' or owner ~= foregroundOwner then
+    return false
+  end
+
+  hud:raise()
   return true
 end
 
@@ -264,7 +276,9 @@ end
 function foregroundOwner:onForegroundGained()
   if not gameActive then
     releaseGameplayForeground()
+    return
   end
+  raiseGameplayHud()
 end
 
 local function onGameStart()
@@ -275,8 +289,11 @@ local function onGameStart()
 
   gameActive = true
   applyProfile(modules.client_mobileui.getProfile())
-  acquireGameplayForeground()
+  local acquiredForeground = acquireGameplayForeground()
   setControlsVisible(true)
+  if acquiredForeground then
+    raiseGameplayHud()
+  end
 end
 
 local function onGameEnd()
