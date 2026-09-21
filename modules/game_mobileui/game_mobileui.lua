@@ -5,6 +5,8 @@ local joystickHost
 local hotbar
 local actions
 local drawerHandle
+local statusAdapter
+local actionAdapter
 local unsubscribeProfile
 local layoutEvent
 local gameActive = false
@@ -117,7 +119,7 @@ local function computeLayout(profile)
 
   local statusWidth = math.max(
     target * 3,
-    math.min(240, math.floor(usableWidth * 0.34)))
+    math.min(280, math.floor(usableWidth * 0.52)))
   local statusRect = rect(leftEdge, safeTop + margin, statusWidth, target)
   local menuRect = rect(rightEdge - target, safeTop + margin, target, target)
   local joystickRect = rect(
@@ -177,6 +179,21 @@ local function synchronizeJoystick(bounds)
     visible and state == 'gameplay' and owner == foregroundOwner)
 end
 
+local function actionsAreActive()
+  if not gameActive or not controlsFit or not hud or
+      hud:isDestroyed() or not hud:isVisible() then
+    return false
+  end
+  local state, owner = modules.client_mobileui.getForeground()
+  return state == 'gameplay' and owner == foregroundOwner
+end
+
+local function synchronizeActions()
+  if actionAdapter then
+    actionAdapter:updateEnabled()
+  end
+end
+
 local function applyComputedLayout(layout)
   if not hud or hud:isDestroyed() then
     return
@@ -225,6 +242,7 @@ local function applyComputedLayout(layout)
 
   synchronizeJoystick(layout.joystickHost)
   setControlsVisible(true)
+  synchronizeActions()
 end
 
 function applyProfile(profile)
@@ -256,6 +274,7 @@ function setControlsVisible(visible)
     hud:setVisible(visible)
   end
   synchronizeJoystick()
+  synchronizeActions()
   return true
 end
 
@@ -302,15 +321,18 @@ end
 function foregroundOwner:onForegroundGained()
   if not gameActive then
     synchronizeJoystick()
+    synchronizeActions()
     releaseGameplayForeground()
     return
   end
   synchronizeJoystick()
+  synchronizeActions()
   raiseGameplayHud()
 end
 
 function foregroundOwner:onForegroundLost()
   synchronizeJoystick()
+  synchronizeActions()
 end
 
 local function onGameStart()
@@ -320,6 +342,12 @@ local function onGameStart()
   end
 
   gameActive = true
+  if statusAdapter then
+    statusAdapter:onGameStart()
+  end
+  if actionAdapter then
+    actionAdapter:onGameStart()
+  end
   applyProfile(modules.client_mobileui.getProfile())
   local acquiredForeground = acquireGameplayForeground()
   setControlsVisible(true)
@@ -329,6 +357,12 @@ local function onGameStart()
 end
 
 local function onGameEnd()
+  if statusAdapter then
+    statusAdapter:onGameEnd()
+  end
+  if actionAdapter then
+    actionAdapter:onGameEnd()
+  end
   if not gameActive then
     return
   end
@@ -336,6 +370,36 @@ local function onGameEnd()
   gameActive = false
   setControlsVisible(false)
   releaseGameplayForeground()
+end
+
+function attackNearest()
+  return actionAdapter and actionAdapter:attackNearest() or false
+end
+
+function interact()
+  return actionAdapter and actionAdapter:interact() or false
+end
+
+function toggleChat()
+  return actionAdapter and actionAdapter:toggleChat() or false
+end
+
+function toggleDrawer()
+  return actionAdapter and actionAdapter:toggleDrawer() or false
+end
+
+function registerChatHandler(handler)
+  if not actionAdapter then
+    return false
+  end
+  return actionAdapter:registerChatHandler(handler)
+end
+
+function registerDrawerHandler(handler)
+  if not actionAdapter then
+    return false
+  end
+  return actionAdapter:registerDrawerHandler(handler)
 end
 
 function runSelfTests()
@@ -475,6 +539,17 @@ function init()
   actions = hud:getChildById('actions')
   drawerHandle = hud:getChildById('drawerHandle')
 
+  if MobileStatus then
+    statusAdapter = MobileStatus.create()
+    statusAdapter:bind(status)
+  end
+  if MobileActions then
+    actionAdapter = MobileActions.create({
+      isActive = actionsAreActive
+    })
+    actionAdapter:bind(actions)
+  end
+
   gameActive = false
   controlsFit = false
   hud.controlsFit = false
@@ -507,6 +582,14 @@ function terminate()
   removeEvent(layoutEvent)
   layoutEvent = nil
   onGameEnd()
+  if statusAdapter then
+    statusAdapter:terminate()
+    statusAdapter = nil
+  end
+  if actionAdapter then
+    actionAdapter:terminate()
+    actionAdapter = nil
+  end
   hud:destroy()
   hud = nil
   status = nil

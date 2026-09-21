@@ -14,33 +14,115 @@ UIWidget
       anchors.left: parent.left
       anchors.top: parent.top
       margin-left: 8
-      margin-top: 5
+      margin-top: 3
+      width: 78
       text: STATUS
       color: #d7e2eb
-      font: verdana-11px-antialised
+      font: verdana-8px-rounded
       phantom: true
+
+    Label
+      id: level
+      anchors.top: parent.top
+      anchors.left: statusName.right
+      margin-top: 3
+      margin-left: 2
+      width: 30
+      color: #b9c9d5
+      font: verdana-8px-rounded
+      text-align: center
+      phantom: true
+
+    Label
+      id: vocation
+      anchors.top: parent.top
+      anchors.right: parent.right
+      margin-top: 3
+      margin-right: 6
+      width: 72
+      color: #b9c9d5
+      font: verdana-8px-rounded
+      text-align: right
+      phantom: true
+
+    Label
+      id: stamina
+      anchors.top: parent.top
+      anchors.left: level.right
+      margin-top: 3
+      margin-left: 2
+      width: 48
+      color: #b9c9d5
+      font: verdana-8px-rounded
+      text-align: center
+      phantom: true
+      visible: false
 
     MobileHudStatusBar
       id: health
       anchors.left: parent.left
-      anchors.right: parent.right
-      anchors.bottom: mana.top
+      anchors.right: soul.left
+      anchors.top: parent.top
       margin-left: 8
-      margin-right: 8
-      margin-bottom: 3
+      margin-right: 4
+      margin-top: 18
       percent: 100
       background-color: #641f29dd
+
+    Label
+      id: healthValue
+      anchors.fill: health
+      color: #f0d9dd
+      font: verdana-8px-rounded
+      text-align: center
+      phantom: true
+
+    Label
+      id: soul
+      width: 43
+      height: 10
+      anchors.top: parent.top
+      anchors.right: parent.right
+      margin-top: 18
+      margin-right: 5
+      color: #d9c3e9
+      font: verdana-8px-rounded
+      text-align: right
+      phantom: true
+      visible: false
 
     MobileHudStatusBar
       id: mana
       anchors.left: parent.left
-      anchors.right: parent.right
+      anchors.right: capacity.left
       anchors.bottom: parent.bottom
       margin-left: 8
-      margin-right: 8
+      margin-right: 4
       margin-bottom: 5
       percent: 100
       background-color: #245477dd
+
+    Label
+      id: manaValue
+      anchors.fill: mana
+      color: #d8e7f2
+      font: verdana-8px-rounded
+      text-align: center
+      phantom: true
+
+    Label
+      id: capacity
+      width: 43
+      height: 10
+      anchors.right: parent.right
+      anchors.bottom: parent.bottom
+      margin-right: 5
+      margin-bottom: 5
+      color: #d7d9c3
+      font: verdana-8px-rounded
+      text-align: right
+      phantom: true
+      visible: false
 
   MobileHudTarget
     id: menu
