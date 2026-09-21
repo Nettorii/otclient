@@ -127,7 +127,10 @@ function Adapter:attackNearest()
   if not target then
     self:_resetCycle()
     target = candidates[1].creature
-    if creatureId(target) == currentId and #candidates > 1 then
+    if creatureId(target) == currentId then
+      if #candidates == 1 then
+        return true
+      end
       target = candidates[2].creature
     end
   end
@@ -306,8 +309,16 @@ function Adapter:terminate()
   self.drawerHandler = nil
 end
 
+local function wallMillis(clock)
+  if clock and type(clock.realMillis) == 'function' then
+    return clock.realMillis()
+  end
+  return clock.millis()
+end
+
 function MobileActions.create(options)
   options = options or {}
+  local clock = options.clock or g_clock
   local adapter = setmetatable({
     game = options.game or g_game,
     map = options.map or g_map,
@@ -322,7 +333,7 @@ function MobileActions.create(options)
     connect = options.connect or connect,
     disconnect = options.disconnect or disconnect,
     isActive = options.isActive or function() return true end,
-    now = options.now or function() return g_clock.millis() end,
+    now = function() return wallMillis(clock) end,
     targetCycle = {},
     targetConnected = false
   }, Adapter)
