@@ -17,6 +17,73 @@ local showOutfitsCheckbox
 local premiumBenefitsPanel
 local premiumButton
 local suppressCheckCallbacks = false
+local characterTouchScroller
+
+local function mobileUiModule()
+    return modules and modules.client_mobileui
+end
+
+local function isMobileV2()
+    local mobileUi = mobileUiModule()
+    return mobileUi and mobileUi.isV2Enabled and mobileUi.isV2Enabled() or false
+end
+
+local function windowChild(id)
+    if isMobileV2() then
+        return charactersWindow:recursiveGetChildById(id)
+    end
+    return charactersWindow:getChildById(id)
+end
+
+local function createTouchScroller(scrollBar)
+    local lastY
+    local dragDistance = 0
+    local dragged = false
+
+    local function onMousePress(widget, position, button)
+        if button ~= MouseLeftButton then return false end
+        lastY = position.y
+        dragDistance = 0
+        dragged = false
+        return false
+    end
+
+    local function onMouseMove(widget, position)
+        if not lastY or not g_mouse.isPressed(MouseLeftButton) then
+            return false
+        end
+
+        local delta = lastY - position.y
+        lastY = position.y
+        dragDistance = dragDistance + math.abs(delta)
+        if dragDistance >= 6 then
+            dragged = true
+            scrollBar:setValue(scrollBar:getValue() + delta)
+        end
+        return dragged
+    end
+
+    local function onMouseRelease(widget, position, button)
+        if button ~= MouseLeftButton then return false end
+        lastY = nil
+        return dragged
+    end
+
+    return {
+        bind = function(widget)
+            connect(widget, {
+                onMousePress = onMousePress,
+                onMouseMove = onMouseMove,
+                onMouseRelease = onMouseRelease
+            })
+        end,
+        consumeClick = function()
+            local consumed = dragged
+            dragged = false
+            return consumed
+        end
+    }
+end
 
 local function setCheckedWithoutCallback(widget, checked)
     if not widget then return end
@@ -71,6 +138,7 @@ local function resetUIReferences()
     showOutfitsCheckbox = nil
     premiumBenefitsPanel = nil
     premiumButton = nil
+    characterTouchScroller = nil
 end
 
 local function toBoolean(value, default)
@@ -104,7 +172,8 @@ local function isPremiumAccount(account)
 end
 
 local function updatePremiumBenefitsVisibility(account)
-    local showBenefits = shouldShowAppearance() and SHOW_PREMIUM_WIDGETS and not isPremiumAccount(account)
+    local showBenefits = not isMobileV2() and shouldShowAppearance() and SHOW_PREMIUM_WIDGETS and
+                             not isPremiumAccount(account)
     if premiumBenefitsPanel then
         premiumBenefitsPanel:setVisible(showBenefits)
         if showBenefits then
@@ -680,7 +749,7 @@ end
 
 function CharacterList.create(characters, account, otui)
     if not otui then
-        otui = 'characterlist'
+        otui = isMobileV2() and 'characterlist-mobile' or 'characterlist'
     end
 
     if charactersWindow then
@@ -688,13 +757,22 @@ function CharacterList.create(characters, account, otui)
     end
 
     charactersWindow = g_ui.displayUI(otui)
-    characterList = charactersWindow:getChildById('characters')
-    panelSort = charactersWindow:getChildById('characterTable')
-    autoReconnectButton = charactersWindow:getChildById('autoReconnect')
+    characterList = windowChild('characters')
+    panelSort = windowChild('characterTable')
+    autoReconnectButton = windowChild('autoReconnect')
     showHiddenCheckbox = charactersWindow:recursiveGetChildById('checkBoxHidden')
     showOutfitsCheckbox = charactersWindow:recursiveGetChildById('checkBoxOutfit')
-    premiumBenefitsPanel = charactersWindow:getChildById('premiumBenefitsPanel')
-    premiumButton = charactersWindow:getChildById('premiumButton')
+    premiumBenefitsPanel = windowChild('premiumBenefitsPanel')
+    premiumButton = windowChild('premiumButton')
+
+    if isMobileV2() then
+        local profile = mobileUiModule().getProfile()
+        local surface = windowChild('characterSurface')
+        surface:setWidth(math.min(700, profile.usableWidth - 24))
+        surface:setHeight(math.min(620, profile.usableHeight - 24))
+        characterTouchScroller = createTouchScroller(windowChild('characterListScrollBar'))
+        characterTouchScroller.bind(characterList)
+    end
 
     characterList.onChildFocusChange = function(self, focusedChild, oldFocusedChild)
         removeAutoReconnectEvent()
@@ -709,10 +787,10 @@ function CharacterList.create(characters, account, otui)
     G.characters = characters
     G.characterAccount = account
 
-    local accountStatusLabel = charactersWindow:getChildById('accountStatusLabel')
+    local accountStatusLabel = windowChild('accountStatusLabel')
     local accountStatusIcon = nil
     if shouldShowAppearance() then
-        accountStatusIcon = charactersWindow:getChildById('accountStatusIcon')
+        accountStatusIcon = windowChild('accountStatusIcon')
     end
 
     if showHiddenCheckbox then
@@ -768,6 +846,21 @@ function CharacterList.create(characters, account, otui)
 
         autoReconnectButton:setText(statusText)
     end
+end
+
+function CharacterList.play(characterWidget)
+    if characterTouchScroller and characterTouchScroller.consumeClick() then
+        return
+    end
+    if not characterWidget then
+        return
+    end
+
+    local list = characterWidget:getParent()
+    if list then
+        list:focusChild(characterWidget, MouseFocusReason)
+    end
+    CharacterList.doLogin()
 end
 
 function CharacterList.rebuildCharactersList()
@@ -842,6 +935,13 @@ function CharacterList.rebuildCharactersList()
                 return true
             end
         })
+        if characterTouchScroller then
+            characterTouchScroller.bind(widget)
+            local playButton = widget:getChildById('play')
+            if playButton then
+                characterTouchScroller.bind(playButton)
+            end
+        end
 
         if (focusName and focusWorld and focusName == widget.characterName and focusWorld == widget.worldName) or
             (i == 1 and not focusLabel) then
@@ -1012,7 +1112,11 @@ function CharacterList.updateCharactersAppearance(widget, characterInfo, showOut
         nameLabel:setMarginLeft(showOutfits and 65 or 5)
     end
 
-    widget:setHeight(showOutfits and 64 or 29)
+    if isMobileV2() then
+        widget:setHeight(72)
+    else
+        widget:setHeight(showOutfits and 64 or 29)
+    end
 
     if mainCharacter then
         mainCharacter:setImageSource(characterInfo.main and '/images/game/entergame/maincharacter' or '')

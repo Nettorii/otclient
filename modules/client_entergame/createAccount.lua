@@ -1,6 +1,12 @@
 -- https://github.com/opentibiabr/myaac/pull/33/files
 
 local MainWindowsCreateAccount = nil
+local createAccountPanel = nil
+local worldSelectionPanel = nil
+local privacyCheckbox = nil
+local startPlayingButton = nil
+local accountBodyScroller = nil
+local worldBodyScroller = nil
 
 local UIwidgetImagen = {
     AccountData = nil,
@@ -61,6 +67,97 @@ local auxWidgets = {
 local Worlds = {}
 
 local sexModeGroup = nil
+
+local function mobileUiModule()
+    return modules and modules.client_mobileui
+end
+
+local function isMobileV2()
+    local mobileUi = mobileUiModule()
+    return mobileUi and mobileUi.isV2Enabled and mobileUi.isV2Enabled() or false
+end
+
+local function childForLayout(parent, id)
+    if isMobileV2() then
+        return parent:recursiveGetChildById(id)
+    end
+    return parent:getChildById(id)
+end
+
+local function createTouchScroller(scrollBar)
+    local lastY
+    local dragDistance = 0
+    local dragged = false
+
+    local function onMousePress(widget, position, button)
+        if button ~= MouseLeftButton then return false end
+        lastY = position.y
+        dragDistance = 0
+        dragged = false
+        return false
+    end
+
+    local function onMouseMove(widget, position)
+        if not lastY or not g_mouse.isPressed(MouseLeftButton) then
+            return false
+        end
+
+        local delta = lastY - position.y
+        lastY = position.y
+        dragDistance = dragDistance + math.abs(delta)
+        if dragDistance >= 6 then
+            dragged = true
+            scrollBar:setValue(scrollBar:getValue() + delta)
+        end
+        return dragged
+    end
+
+    local function onMouseRelease(widget, position, button)
+        if button ~= MouseLeftButton then return false end
+        lastY = nil
+        return dragged
+    end
+
+    local function bind(widget)
+        if not widget then return end
+        connect(widget, {
+            onMousePress = onMousePress,
+            onMouseMove = onMouseMove,
+            onMouseRelease = onMouseRelease
+        })
+    end
+
+    return {
+        bind = bind
+    }
+end
+
+local function bindTouchScrollerTree(scroller, widget)
+    if not scroller or not widget then return end
+    scroller.bind(widget)
+    for _, child in ipairs(widget:getChildren()) do
+        bindTouchScrollerTree(scroller, child)
+    end
+end
+
+local function setupMobileLayout()
+    if not isMobileV2() then return end
+
+    local profile = mobileUiModule().getProfile()
+    local surface = MainWindowsCreateAccount:recursiveGetChildById('createAccountSurface')
+    surface:setWidth(math.min(700, profile.usableWidth - 24))
+    surface:setHeight(math.min(620, profile.usableHeight - 24))
+
+    local accountBody = MainWindowsCreateAccount:recursiveGetChildById('accountBody')
+    local accountScrollBar = MainWindowsCreateAccount:recursiveGetChildById('accountBodyScrollBar')
+    accountBodyScroller = createTouchScroller(accountScrollBar)
+    bindTouchScrollerTree(accountBodyScroller, accountBody)
+
+    local worldBody = MainWindowsCreateAccount:recursiveGetChildById('worldBody')
+    local worldScrollBar = MainWindowsCreateAccount:recursiveGetChildById('worldBodyScrollBar')
+    worldBodyScroller = createTouchScroller(worldScrollBar)
+    bindTouchScrollerTree(worldBodyScroller, worldBody)
+end
 
 -- /*=============================================
 -- =            http post // receive             =
@@ -258,7 +355,7 @@ end
 
 local function setRequirementState(widget, enabled, widgetError, errorMessage)
     widget:setEnabled(enabled)
-    updateButtonState(MainWindowsCreateAccount.createAccount.buttonStartPlaying)
+    updateButtonState(startPlayingButton)
 
     if widgetError then
         local errorWidget = toolstips.allExceptPassword:getChildById(widgetError:getId())
@@ -444,10 +541,9 @@ local function behavioronTextChange()
 end
 
 local function behavioronCheckChange()
-    MainWindowsCreateAccount.createAccount.createYourAccount.panelCheckBox.checkboxPrivacy.onCheckChange =
-        function(a, b)
-            setRequirementState(a:getParent():getChildById('icons'), b)
-        end
+    privacyCheckbox.onCheckChange = function(widget, checked)
+        setRequirementState(widget:getParent():getChildById('icons'), checked)
+    end
 end
 
 -- /*=============================================
@@ -590,6 +686,9 @@ local function initializeWorldsList(worlds)
         widget:setId(world.Name)
         widget:getChildById('details'):setText(world.Name)
         widget:setBackgroundColor(i % 2 == 0 and "#ffffff12" or "#00000012")
+        if worldBodyScroller then
+            bindTouchScrollerTree(worldBodyScroller, widget)
+        end
         if i == 1 then
             focusLabel = widget
         end
@@ -642,12 +741,14 @@ function onClickResetGameWorld()
 end
 
 function toggleMainPanels(bool)
-    MainWindowsCreateAccount.createAccount:setVisible(not bool)
-    MainWindowsCreateAccount.mainPanelSelectAGameWorldToPlayOn:setVisible(bool)
-    if bool then
-        MainWindowsCreateAccount:setHeight(350)
-    else
-        MainWindowsCreateAccount:setHeight(390)
+    createAccountPanel:setVisible(not bool)
+    worldSelectionPanel:setVisible(bool)
+    if not isMobileV2() then
+        if bool then
+            MainWindowsCreateAccount:setHeight(350)
+        else
+            MainWindowsCreateAccount:setHeight(390)
+        end
     end
 end
 
@@ -671,49 +772,68 @@ function createWidgetAccount()
                 reportRequestWarning("getaccountcreationstatus", err, "fx createWidgetAccount")
                 return
             end
-            MainWindowsCreateAccount = g_ui.displayUI('createAccount')
+            local mobileV2 = isMobileV2()
+            MainWindowsCreateAccount = g_ui.displayUI(mobileV2 and 'createAccount-mobile' or 'createAccount')
+            createAccountPanel = childForLayout(MainWindowsCreateAccount, 'createAccount')
+            worldSelectionPanel = childForLayout(MainWindowsCreateAccount, 'mainPanelSelectAGameWorldToPlayOn')
             -- LuaFormatter off
-            UIwidgetImagen.AccountData = MainWindowsCreateAccount.imagesBanner.accountdatainvalid
-            UIwidgetImagen.AllData = MainWindowsCreateAccount.imagesBanner.banneralldatainvalid
-            UIwidgetImagen.CharacterData = MainWindowsCreateAccount.imagesBanner.bannercharacterdatainvalid
+            local imagesBanner = childForLayout(MainWindowsCreateAccount, 'imagesBanner')
+            UIwidgetImagen.AccountData = childForLayout(imagesBanner, 'accountdatainvalid')
+            UIwidgetImagen.AllData = childForLayout(imagesBanner, 'banneralldatainvalid')
+            UIwidgetImagen.CharacterData = childForLayout(imagesBanner, 'bannercharacterdatainvalid')
 
-            UIlabel.RecommendedWorld = MainWindowsCreateAccount.createAccount.createYourCharacter.panelRecommendedWorld.worldLabel
+            local createYourAccount = childForLayout(createAccountPanel, 'createYourAccount')
+            local createYourCharacter = childForLayout(createAccountPanel, 'createYourCharacter')
+            local panelRecommendedWorld = childForLayout(createYourCharacter, 'panelRecommendedWorld')
+            UIlabel.RecommendedWorld = childForLayout(panelRecommendedWorld, 'worldLabel')
 
             sexModeGroup = UIRadioGroup.create()
-            sexModeGroup:addWidget(MainWindowsCreateAccount.createAccount.createYourCharacter.panelSex.Male)
-            sexModeGroup:addWidget(MainWindowsCreateAccount.createAccount.createYourCharacter.panelSex.Female)
+            local panelSex = childForLayout(createYourCharacter, 'panelSex')
+            sexModeGroup:addWidget(childForLayout(panelSex, 'Male'))
+            sexModeGroup:addWidget(childForLayout(panelSex, 'Female'))
             -- sexModeGroup.onSelectionChange = sexModeChange
-            sexModeGroup:selectWidget(MainWindowsCreateAccount.createAccount.createYourCharacter.panelSex.Male)
+            sexModeGroup:selectWidget(childForLayout(panelSex, 'Male'))
 
             -- world
-            UIComboBox.world = MainWindowsCreateAccount.mainPanelSelectAGameWorldToPlayOn.panelSelectAGameWorldToPlayOn.panelSelectworldAndPvp.comboBoxWorld
-            UIComboBox.pvp = MainWindowsCreateAccount.mainPanelSelectAGameWorldToPlayOn.panelSelectAGameWorldToPlayOn.panelSelectworldAndPvp.comboBoxPvp
-            UITextList.listAllWorlds = MainWindowsCreateAccount.mainPanelSelectAGameWorldToPlayOn.panelSelectAGameWorldToPlayOn.textListAllWorlds
-            UIlabel.titleMiniPanelWorld = MainWindowsCreateAccount.mainPanelSelectAGameWorldToPlayOn.panelSelectAGameWorldToPlayOn.worldInfo
+            local selectWorldPanel = childForLayout(worldSelectionPanel, 'panelSelectAGameWorldToPlayOn')
+            local worldFilters = childForLayout(selectWorldPanel, 'panelSelectworldAndPvp')
+            UIComboBox.world = childForLayout(worldFilters, 'comboBoxWorld')
+            UIComboBox.pvp = childForLayout(worldFilters, 'comboBoxPvp')
+            UITextList.listAllWorlds = childForLayout(selectWorldPanel, 'textListAllWorlds')
+            UIlabel.titleMiniPanelWorld = childForLayout(selectWorldPanel, 'worldInfo')
     
             -- icons Account
-            iconsCreateAccount.Password = MainWindowsCreateAccount.createAccount.createYourAccount.panelPassword.icons
-            iconsCreateAccount.Email = MainWindowsCreateAccount.createAccount.createYourAccount.panelEmail.icons
-            iconsCreateAccount.RepeatPassword = MainWindowsCreateAccount.createAccount.createYourAccount.panelRepeatPassword.icons
-            iconsCreateAccount.CheckBox = MainWindowsCreateAccount.createAccount.createYourAccount.panelCheckBox.icons
+            local panelPassword = childForLayout(createYourAccount, 'panelPassword')
+            local panelEmail = childForLayout(createYourAccount, 'panelEmail')
+            local panelRepeatPassword = childForLayout(createYourAccount, 'panelRepeatPassword')
+            local panelCheckBox = childForLayout(createYourAccount, 'panelCheckBox')
+            iconsCreateAccount.Password = childForLayout(panelPassword, 'icons')
+            iconsCreateAccount.Email = childForLayout(panelEmail, 'icons')
+            iconsCreateAccount.RepeatPassword = childForLayout(panelRepeatPassword, 'icons')
+            iconsCreateAccount.CheckBox = childForLayout(panelCheckBox, 'icons')
             -- icons Characters
-            iconsCreateCharacter.Sex = MainWindowsCreateAccount.createAccount.createYourCharacter.panelSex.icons
-            iconsCreateCharacter.RecommendedWorld = MainWindowsCreateAccount.createAccount.createYourCharacter.panelRecommendedWorld.icons
-            iconsCreateCharacter.CharacterName = MainWindowsCreateAccount.createAccount.createYourCharacter.panelCharacterName.icons
+            local panelCharacterName = childForLayout(createYourCharacter, 'panelCharacterName')
+            iconsCreateCharacter.Sex = childForLayout(panelSex, 'icons')
+            iconsCreateCharacter.RecommendedWorld = childForLayout(panelRecommendedWorld, 'icons')
+            iconsCreateCharacter.CharacterName = childForLayout(panelCharacterName, 'icons')
 
             -- Tooltips Password
-            toolstips.allExceptPassword = MainWindowsCreateAccount.createAccount.testToolstips
-            toolstips.password = MainWindowsCreateAccount.createAccount.passwordRequirements
+            toolstips.allExceptPassword = childForLayout(createAccountPanel, 'testToolstips')
+            toolstips.password = childForLayout(createAccountPanel, 'passwordRequirements')
 
             -- Input TextEdit
-            UITextEdit.email = MainWindowsCreateAccount.createAccount.test.textEditEmail
-            UITextEdit.password = MainWindowsCreateAccount.createAccount.test.textEditPassword
-            UITextEdit.repeatPassword = MainWindowsCreateAccount.createAccount.test.textEditRepeatPassword
-            UITextEdit.character = MainWindowsCreateAccount.createAccount.test.textEditCharacter
+            local textFields = childForLayout(createAccountPanel, 'test')
+            UITextEdit.email = childForLayout(textFields, 'textEditEmail')
+            UITextEdit.password = childForLayout(textFields, 'textEditPassword')
+            UITextEdit.repeatPassword = childForLayout(textFields, 'textEditRepeatPassword')
+            UITextEdit.character = childForLayout(textFields, 'textEditCharacter')
+            privacyCheckbox = childForLayout(panelCheckBox, 'checkboxPrivacy')
+            startPlayingButton = childForLayout(createAccountPanel, 'buttonStartPlaying')
 -- LuaFormatter on
 
             globalInfo.selectedWorld = data.RecommendedWorld
 
+            setupMobileLayout()
             initializeWorldsList(data.Worlds)
             UIlabel.RecommendedWorld:setText(string.format("%s (%s)", data.RecommendedWorld,
                 findWorldByName(data.RecommendedWorld).Region))
@@ -819,6 +939,12 @@ function destroyCreateAccount()
             MainWindowsCreateAccount:destroy()
             MainWindowsCreateAccount = nil
         end
+        createAccountPanel = nil
+        worldSelectionPanel = nil
+        privacyCheckbox = nil
+        startPlayingButton = nil
+        accountBodyScroller = nil
+        worldBodyScroller = nil
         Worlds = {}
         lastRequestTime = {}
     end

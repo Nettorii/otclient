@@ -1,0 +1,757 @@
+MobileAccountField < HiddenTextQtEdit
+  height: 48
+  text-offset: 8 15
+  padding: 8
+  background-color: #0d1622ee
+
+MobileAccountTextField < TextQtEdit
+  height: 48
+  text-offset: 8 15
+  padding: 8
+  background-color: #0d1622ee
+
+MobileAccountButton < QtButton
+  height: 48
+  font: verdana-11px-antialised
+
+MobileAccountRow < Panel
+  height: 68
+
+  Label
+    id: label
+    anchors.left: parent.left
+    anchors.top: parent.top
+    width: 132
+    height: 48
+    color: #aebdca
+    text-align: left
+
+  UIWidget
+    id: icons
+    size: 16 16
+    anchors.right: parent.right
+    anchors.verticalCenter: parent.verticalCenter
+    image-source: /images/ui/icon-yes
+    image-size: 12 9
+    enabled: false
+
+    $disabled:
+      image-source: /images/ui/createaccount/icon-no
+
+MobileAccountStep < Label
+  height: 32
+  text-align: center
+  color: #8294a5
+  background-color: #111b29cc
+  border-width: 1
+  border-color: #52687a55
+  enabled: false
+
+  $enabled:
+    color: #dff6e6
+    background-color: #173225dd
+    border-color: #6cb78688
+
+WorldWidget < UIWidget
+  height: 48
+  background-color: alpha
+
+  &updateOnStates: |
+    function(self)
+      local focused = self:isFocused()
+      self:setBorderWidth(focused and 1 or 0)
+      self:setBorderColor(focused and "#7890a4" or "alpha")
+    end
+  @onFocusChange: self:updateOnStates()
+  @onSetup: self:updateOnStates()
+
+  Label
+    id: details
+    anchors.fill: parent
+    padding-left: 10
+    color: #c6d2dd
+    text-align: left
+
+    $on:
+      color: #ffffff
+
+UIWindow
+  id: mainWindow
+  background-color: #070c13ee
+  clipping: true
+  anchors.fill: parent
+  @onEscape: destroyCreateAccount()
+
+  MobileUISurface
+    id: createAccountSurface
+    size: 700 500
+    anchors.centerIn: parent
+    padding: 12
+    clipping: true
+
+    Panel
+      id: imagesBanner
+      anchors.left: parent.left
+      anchors.right: parent.right
+      anchors.top: parent.top
+      height: 40
+      layout:
+        type: horizontalBox
+        spacing: 6
+
+      MobileAccountStep
+        id: accountdatainvalid
+        !text: tr('1  Account')
+
+      MobileAccountStep
+        id: banneralldatainvalid
+        !text: tr('2  Review')
+
+      MobileAccountStep
+        id: bannercharacterdatainvalid
+        !text: tr('3  Character')
+
+    Panel
+      id: createAccount
+      anchors.left: parent.left
+      anchors.right: parent.right
+      anchors.top: imagesBanner.bottom
+      anchors.bottom: parent.bottom
+
+      UIScrollArea
+        id: accountBody
+        anchors.left: parent.left
+        anchors.right: accountBodyScrollBar.left
+        anchors.top: parent.top
+        anchors.bottom: accountActions.top
+        margin-top: 6
+        margin-right: 4
+        margin-bottom: 6
+        vertical-scrollbar: accountBodyScrollBar
+        clipping: true
+        layout:
+          type: verticalBox
+          spacing: 6
+
+        Panel
+          id: test
+          height: 426
+
+          MiniPanel
+            id: createYourAccount
+            !text: tr('Create Your Account')
+            anchors.left: parent.left
+            anchors.right: parent.right
+            anchors.top: parent.top
+            height: 238
+
+            MobileAccountRow
+              id: panelEmail
+              anchors.left: parent.left
+              anchors.right: parent.right
+              anchors.top: parent.top
+
+              Label
+                !text: tr('Email:')
+
+              MobileAccountTextField
+                id: textEditEmail
+                anchors.left: parent.left
+                anchors.right: icons.left
+                anchors.top: parent.top
+                margin-left: 132
+                margin-right: 8
+                text-hidden: false
+
+            MobileAccountRow
+              id: panelPassword
+              anchors.left: parent.left
+              anchors.right: parent.right
+              anchors.top: panelEmail.bottom
+
+              Label
+                !text: tr('Password:')
+
+              MobileAccountField
+                id: textEditPassword
+                anchors.left: parent.left
+                anchors.right: icons.left
+                anchors.top: parent.top
+                margin-left: 132
+                margin-right: 8
+
+            MobileAccountRow
+              id: panelRepeatPassword
+              anchors.left: parent.left
+              anchors.right: parent.right
+              anchors.top: panelPassword.bottom
+
+              Label
+                !text: tr('Repeat Password:')
+
+              MobileAccountField
+                id: textEditRepeatPassword
+                anchors.left: parent.left
+                anchors.right: icons.left
+                anchors.top: parent.top
+                margin-left: 132
+                margin-right: 8
+
+            Panel
+              id: panelCheckBox
+              anchors.left: parent.left
+              anchors.right: parent.right
+              anchors.top: panelRepeatPassword.bottom
+              height: 48
+
+              QtCheckBox
+                id: checkboxPrivacy
+                anchors.left: parent.left
+                anchors.right: icons.left
+                anchors.top: parent.top
+                height: 48
+                margin-right: 8
+                text-wrap: true
+                !text: tr('I agree to the Tibia Service Agreement, Tibia Rules and Tibia Privacy Policy.')
+
+              UIWidget
+                id: icons
+                size: 16 16
+                anchors.right: parent.right
+                anchors.verticalCenter: parent.verticalCenter
+                image-source: /images/ui/icon-yes
+                image-size: 12 9
+                enabled: false
+
+                $disabled:
+                  image-source: /images/ui/createaccount/icon-no
+
+          MiniPanel
+            id: createYourCharacter
+            !text: tr('Create Your Character')
+            anchors.left: parent.left
+            anchors.right: parent.right
+            anchors.top: createYourAccount.bottom
+            margin-top: 6
+            height: 182
+
+            Panel
+              id: panelCharacterName
+              anchors.left: parent.left
+              anchors.right: parent.right
+              anchors.top: parent.top
+              height: 68
+
+              Label
+                anchors.left: parent.left
+                anchors.top: parent.top
+                size: 132 48
+                color: #aebdca
+                !text: tr('Character Name:')
+
+              MobileAccountTextField
+                id: textEditCharacter
+                anchors.left: parent.left
+                anchors.right: suggestName.left
+                anchors.top: parent.top
+                margin-left: 132
+                margin-right: 6
+                text-hidden: false
+
+              MobileAccountButton
+                id: suggestName
+                anchors.right: icons.left
+                anchors.top: parent.top
+                margin-right: 8
+                width: 112
+                !text: tr('Suggest Name')
+                @onClick: onClickSuggestName()
+
+              UIWidget
+                id: icons
+                size: 16 16
+                anchors.right: parent.right
+                anchors.verticalCenter: parent.verticalCenter
+                image-source: /images/ui/icon-yes
+                image-size: 12 9
+                enabled: false
+
+                $disabled:
+                  image-source: /images/ui/createaccount/icon-no
+
+            Panel
+              id: panelSex
+              anchors.left: parent.left
+              anchors.right: parent.right
+              anchors.top: panelCharacterName.bottom
+              height: 48
+
+              Label
+                anchors.left: parent.left
+                anchors.top: parent.top
+                size: 132 48
+                color: #aebdca
+                !text: tr('Character Sex:')
+
+              CheckBoxCircle
+                id: Male
+                anchors.left: parent.left
+                anchors.verticalCenter: parent.verticalCenter
+                margin-left: 132
+                size: 92 48
+                text-offset: 20 0
+                !text: tr('male')
+
+              CheckBoxCircle
+                id: Female
+                anchors.left: Male.right
+                anchors.verticalCenter: parent.verticalCenter
+                size: 100 48
+                text-offset: 20 0
+                !text: tr('female')
+
+              UIWidget
+                id: icons
+                size: 16 16
+                anchors.right: parent.right
+                anchors.verticalCenter: parent.verticalCenter
+                image-source: /images/ui/icon-yes
+                image-size: 12 9
+
+            Panel
+              id: panelRecommendedWorld
+              anchors.left: parent.left
+              anchors.right: parent.right
+              anchors.top: panelSex.bottom
+              height: 48
+
+              Label
+                anchors.left: parent.left
+                anchors.top: parent.top
+                size: 132 48
+                color: #aebdca
+                !text: tr('World:')
+
+              Label
+                id: worldLabel
+                anchors.left: parent.left
+                anchors.right: changeWorld.left
+                anchors.top: parent.top
+                margin-left: 132
+                margin-right: 6
+                height: 48
+                color: #e5edf5
+                text-align: left
+                text-wrap: true
+
+              MobileAccountButton
+                id: changeWorld
+                anchors.right: icons.left
+                anchors.top: parent.top
+                margin-right: 8
+                width: 112
+                !text: tr('Change World')
+                @onClick: toggleMainPanels(true)
+
+              UIWidget
+                id: icons
+                size: 16 16
+                anchors.right: parent.right
+                anchors.verticalCenter: parent.verticalCenter
+                image-source: /images/ui/icon-yes
+                image-size: 12 9
+
+        Panel
+          id: testToolstips
+          height: 66
+
+          Label
+            id: textEditEmail
+            visible: false
+            anchors.left: parent.left
+            anchors.right: parent.right
+            anchors.top: parent.top
+            color: #ff8b78
+            text-wrap: true
+            text-auto-resize: true
+
+          Label
+            id: textEditRepeatPassword
+            visible: false
+            anchors.left: parent.left
+            anchors.right: parent.right
+            anchors.top: parent.top
+            color: #ff8b78
+            text-wrap: true
+            text-auto-resize: true
+
+          Label
+            id: textEditCharacter
+            visible: false
+            anchors.left: parent.left
+            anchors.right: parent.right
+            anchors.top: parent.top
+            color: #ff8b78
+            text-wrap: true
+            text-auto-resize: true
+
+        MiniPanel
+          id: passwordRequirements
+          visible: false
+          height: 116
+          !text: tr('Password Requirements')
+          layout:
+            type: verticalBox
+
+          Panel
+            id: PasswordLength
+            height: 20
+            UIWidget
+              id: icons
+              size: 16 16
+              anchors.left: parent.left
+              anchors.verticalCenter: parent.verticalCenter
+              image-source: /images/ui/icon-yes
+              enabled: false
+              $disabled:
+                image-source: /images/ui/createaccount/icon-no
+            Label
+              anchors.left: prev.right
+              anchors.right: parent.right
+              anchors.verticalCenter: parent.verticalCenter
+              margin-left: 6
+              !text: tr('10 - 29 characters')
+
+          Panel
+            id: InvalidCharacters
+            height: 20
+            UIWidget
+              id: icons
+              size: 16 16
+              anchors.left: parent.left
+              anchors.verticalCenter: parent.verticalCenter
+              image-source: /images/ui/icon-yes
+              enabled: false
+              $disabled:
+                image-source: /images/ui/createaccount/icon-no
+            Label
+              anchors.left: prev.right
+              anchors.right: parent.right
+              anchors.verticalCenter: parent.verticalCenter
+              margin-left: 6
+              !text: tr('No invalid characters')
+
+          Panel
+            id: HasLowerCase
+            height: 20
+            UIWidget
+              id: icons
+              size: 16 16
+              anchors.left: parent.left
+              anchors.verticalCenter: parent.verticalCenter
+              image-source: /images/ui/icon-yes
+              enabled: false
+              $disabled:
+                image-source: /images/ui/createaccount/icon-no
+            Label
+              anchors.left: prev.right
+              anchors.right: parent.right
+              anchors.verticalCenter: parent.verticalCenter
+              margin-left: 6
+              !text: tr('At least one lower case letter')
+
+          Panel
+            id: HasUpperCase
+            height: 20
+            UIWidget
+              id: icons
+              size: 16 16
+              anchors.left: parent.left
+              anchors.verticalCenter: parent.verticalCenter
+              image-source: /images/ui/icon-yes
+              enabled: false
+              $disabled:
+                image-source: /images/ui/createaccount/icon-no
+            Label
+              anchors.left: prev.right
+              anchors.right: parent.right
+              anchors.verticalCenter: parent.verticalCenter
+              margin-left: 6
+              !text: tr('At least one upper case letter')
+
+          Panel
+            id: HasNumber
+            height: 20
+            UIWidget
+              id: icons
+              size: 16 16
+              anchors.left: parent.left
+              anchors.verticalCenter: parent.verticalCenter
+              image-source: /images/ui/icon-yes
+              enabled: false
+              $disabled:
+                image-source: /images/ui/createaccount/icon-no
+            Label
+              anchors.left: prev.right
+              anchors.right: parent.right
+              anchors.verticalCenter: parent.verticalCenter
+              margin-left: 6
+              !text: tr('At least one number')
+
+      VerticalScrollBar
+        id: accountBodyScrollBar
+        anchors.top: parent.top
+        anchors.bottom: accountActions.top
+        anchors.right: parent.right
+        margin-top: 6
+        margin-bottom: 6
+        step: 48
+        pixels-scroll: true
+
+      Panel
+        id: accountActions
+        anchors.left: parent.left
+        anchors.right: parent.right
+        anchors.bottom: parent.bottom
+        height: 48
+
+        MobileAccountButton
+          id: alreadyRegistered
+          anchors.left: parent.left
+          anchors.top: parent.top
+          width: 160
+          !text: tr('Already Registered')
+          @onClick: toggleCreateAccount(true)
+
+        MobileAccountButton
+          id: buttonStartPlaying
+          anchors.right: parent.right
+          anchors.top: parent.top
+          width: 160
+          !text: tr('Start Playing')
+          enabled: false
+          @onClick: onClickStartPlaying()
+
+    Panel
+      id: mainPanelSelectAGameWorldToPlayOn
+      visible: false
+      anchors.left: parent.left
+      anchors.right: parent.right
+      anchors.top: imagesBanner.bottom
+      anchors.bottom: parent.bottom
+
+      UIScrollArea
+        id: worldBody
+        anchors.left: parent.left
+        anchors.right: worldBodyScrollBar.left
+        anchors.top: parent.top
+        anchors.bottom: worldActions.top
+        margin-top: 6
+        margin-right: 4
+        margin-bottom: 6
+        vertical-scrollbar: worldBodyScrollBar
+        clipping: true
+
+        MiniPanel
+          id: panelSelectAGameWorldToPlayOn
+          !text: tr('Select a Game World to Play On')
+          size: 640 390
+          anchors.left: parent.left
+          anchors.top: parent.top
+
+          Panel
+            id: panelSelectworldAndPvp
+            anchors.left: parent.left
+            anchors.right: parent.right
+            anchors.top: parent.top
+            height: 48
+
+            Label
+              anchors.left: parent.left
+              anchors.top: parent.top
+              size: 92 48
+              color: #aebdca
+              !text: tr('Location:')
+
+            QtComboBox
+              id: comboBoxWorld
+              anchors.left: parent.left
+              anchors.top: parent.top
+              margin-left: 92
+              size: 180 48
+
+            Label
+              anchors.left: comboBoxWorld.right
+              anchors.top: parent.top
+              margin-left: 12
+              size: 72 48
+              color: #aebdca
+              !text: tr('PvP:')
+
+            QtComboBox
+              id: comboBoxPvp
+              anchors.left: prev.right
+              anchors.right: parent.right
+              anchors.top: parent.top
+              size: 180 48
+
+          TextList
+            id: textListAllWorlds
+            background-color: #0d1622ee
+            anchors.left: parent.left
+            anchors.top: panelSelectworldAndPvp.bottom
+            margin-top: 6
+            size: 220 314
+            vertical-scrollbar: ListScrollBar
+
+          VerticalQtScrollBar
+            id: ListScrollBar
+            anchors.top: textListAllWorlds.top
+            anchors.right: textListAllWorlds.right
+            anchors.bottom: textListAllWorlds.bottom
+            step: 48
+            pixels-scroll: true
+
+          MiniPanel
+            id: worldInfo
+            !text: tr('World Information')
+            anchors.left: textListAllWorlds.right
+            anchors.right: parent.right
+            anchors.top: textListAllWorlds.top
+            height: 314
+            margin-left: 8
+            layout:
+              type: verticalBox
+
+            Panel
+              height: 36
+              Label
+                anchors.left: parent.left
+                anchors.top: parent.top
+                width: 150
+                !text: tr('Players Online:')
+              Label
+                id: PlayersOnline
+                anchors.left: prev.right
+                anchors.right: parent.right
+                anchors.top: parent.top
+
+            Panel
+              height: 36
+              Label
+                anchors.left: parent.left
+                anchors.top: parent.top
+                width: 150
+                !text: tr('PvP Type:')
+              Label
+                id: PvPType
+                anchors.left: prev.right
+                anchors.right: parent.right
+                anchors.top: parent.top
+
+            Panel
+              height: 36
+              Label
+                anchors.left: parent.left
+                anchors.top: parent.top
+                width: 150
+                !text: tr('World Location:')
+              Label
+                id: Region
+                anchors.left: prev.right
+                anchors.right: parent.right
+                anchors.top: parent.top
+
+            Panel
+              height: 36
+              Label
+                anchors.left: parent.left
+                anchors.top: parent.top
+                width: 150
+                !text: tr('Creation Date:')
+              Label
+                id: CreationDate
+                anchors.left: prev.right
+                anchors.right: parent.right
+                anchors.top: parent.top
+
+            Panel
+              height: 36
+              Label
+                anchors.left: parent.left
+                anchors.top: parent.top
+                width: 150
+                !text: tr('BattlEye Status:')
+              Label
+                id: BattlEyeActivationTimestamp
+                anchors.left: prev.right
+                anchors.right: parent.right
+                anchors.top: parent.top
+                text-wrap: true
+
+            Panel
+              height: 36
+              Label
+                anchors.left: parent.left
+                anchors.top: parent.top
+                width: 150
+                !text: tr('Premium Only:')
+              Label
+                id: PremiumOnly
+                anchors.left: prev.right
+                anchors.right: parent.right
+                anchors.top: parent.top
+
+            Panel
+              height: 36
+              Label
+                anchors.left: parent.left
+                anchors.top: parent.top
+                width: 150
+                !text: tr('Transfer Type:')
+              Label
+                id: TransferType
+                anchors.left: prev.right
+                anchors.right: parent.right
+                anchors.top: parent.top
+
+      VerticalScrollBar
+        id: worldBodyScrollBar
+        anchors.top: parent.top
+        anchors.bottom: worldActions.top
+        anchors.right: parent.right
+        margin-top: 6
+        margin-bottom: 6
+        step: 48
+        pixels-scroll: true
+
+      Panel
+        id: worldActions
+        anchors.left: parent.left
+        anchors.right: parent.right
+        anchors.bottom: parent.bottom
+        height: 48
+
+        MobileAccountButton
+          id: worldBack
+          anchors.left: parent.left
+          anchors.top: parent.top
+          width: 120
+          !text: tr('Back')
+          @onClick: toggleMainPanels(false)
+
+        MobileAccountButton
+          id: worldReset
+          anchors.horizontalCenter: parent.horizontalCenter
+          anchors.top: parent.top
+          width: 120
+          !text: tr('Reset')
+          @onClick: onClickResetGameWorld()
+
+        MobileAccountButton
+          id: worldOk
+          anchors.right: parent.right
+          anchors.top: parent.top
+          width: 120
+          !text: tr('OK')
+          @onClick: onClickOkChangeWorld()

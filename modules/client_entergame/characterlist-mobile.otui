@@ -1,0 +1,321 @@
+MobileCharacterButton < QtButton
+  height: 48
+  font: verdana-11px-antialised
+
+CharacterWidget < UIWidget
+  height: 72
+  background-color: #111b29
+  border-width: 1
+  border-color: #52687a44
+
+  &updateOnStates: |
+    function(self)
+      local focused = self:isFocused()
+      self:setBackgroundColor(focused and "#24364b" or (self.rowColor or "#111b29"))
+      self:setBorderColor(focused and "#91adc2" or "#52687a44")
+      local pin = self:getChildById('pin')
+      if pin then pin:setVisible(g_game.getFeature(GameEnterGameShowAppearance)) end
+    end
+  @onFocusChange: self:updateOnStates()
+  @onSetup: self:updateOnStates()
+
+  UICreature
+    id: outfitCreatureBox
+    size: 64 64
+    anchors.left: parent.left
+    anchors.verticalCenter: parent.verticalCenter
+    fixed-creature-size: true
+
+  Label
+    id: name
+    anchors.left: parent.left
+    anchors.right: play.left
+    anchors.top: parent.top
+    margin-left: 68
+    margin-right: 8
+    height: 24
+    color: #f4f7fa
+    font: verdana-11px-antialised
+    text-align: left
+
+  Label
+    id: levelCaption
+    anchors.left: name.left
+    anchors.top: name.bottom
+    width: 34
+    height: 20
+    color: #8397aa
+    !text: tr('Lvl')
+
+  Label
+    id: level
+    anchors.left: levelCaption.right
+    anchors.top: name.bottom
+    width: 48
+    height: 20
+    color: #c5d1dc
+
+  Label
+    id: vocation
+    anchors.left: level.right
+    anchors.right: play.left
+    anchors.top: name.bottom
+    margin-left: 8
+    margin-right: 8
+    height: 20
+    color: #c5d1dc
+
+  Label
+    id: worldName
+    anchors.left: name.left
+    anchors.right: play.left
+    anchors.top: level.bottom
+    margin-right: 8
+    height: 24
+    color: #8fa6b9
+    text-align: left
+    text-wrap: true
+
+  UIWidget
+    id: mainCharacter
+    size: 9 8
+    anchors.left: name.right
+    anchors.top: name.top
+    image-source: /images/game/entergame/maincharacter
+    image-clip: 0 0 9 8
+
+  UIWidget
+    id: statusDailyReward
+    size: 11 19
+    anchors.right: play.left
+    anchors.top: parent.top
+    margin-right: 38
+    margin-top: 3
+    image-source: /images/game/entergame/dailyreward_collected
+    image-clip: 0 0 11 19
+
+  UIWidget
+    id: statusHidden
+    size: 11 19
+    anchors.right: play.left
+    anchors.top: parent.top
+    margin-right: 23
+    margin-top: 3
+    image-source: /images/game/entergame/hidden
+    image-clip: 0 0 11 19
+
+  CheckBoxButton
+    id: pin
+    size: 20 20
+    anchors.right: play.left
+    anchors.top: parent.top
+    margin-right: 2
+    margin-top: 2
+    icon-source: /game_questlog/images/icon-pin
+    @onCheckChange: onPinCharacter(self, self:isChecked())
+
+    $checked:
+      image-color: #ff7f6e
+
+  MobileCharacterButton
+    id: play
+    anchors.right: parent.right
+    anchors.verticalCenter: parent.verticalCenter
+    width: 88
+    margin-right: 6
+    !text: tr('Play')
+    @onClick: CharacterList.play(self:getParent())
+
+UIWindow
+  id: charactersWindow
+  background-color: #070c13ee
+  clipping: true
+  anchors.fill: parent
+  visible: false
+  @onEnter: CharacterList.doLogin()
+  @onEscape: CharacterList.hide(true)
+  @onSetup: |
+    g_keyboard.bindKeyPress('Up', function()
+      local list = self:recursiveGetChildById('characters')
+      list:focusPreviousChild(KeyboardFocusReason)
+    end, self)
+    g_keyboard.bindKeyPress('Down', function()
+      local list = self:recursiveGetChildById('characters')
+      list:focusNextChild(KeyboardFocusReason)
+    end, self)
+
+  MobileUISurface
+    id: characterSurface
+    size: 700 620
+    anchors.centerIn: parent
+    padding: 12
+    clipping: true
+
+    Panel
+      id: characterHeader
+      anchors.left: parent.left
+      anchors.right: parent.right
+      anchors.top: parent.top
+      height: 48
+
+      Label
+        id: characterTitle
+        anchors.left: parent.left
+        anchors.top: parent.top
+        width: 170
+        height: 48
+        color: #f4f7fa
+        font: cipsoftFont
+        !text: tr('Select Character')
+
+      Label
+        id: accountStatusCaption
+        anchors.left: characterTitle.right
+        anchors.top: parent.top
+        size: 110 48
+        color: #8397aa
+        text-align: right
+        !text: tr('Account Status') .. ':'
+
+      Label
+        id: accountStatusIcon
+        size: 22 20
+        anchors.left: accountStatusCaption.right
+        anchors.verticalCenter: parent.verticalCenter
+        margin-left: 8
+        image-source: /images/game/entergame/premium
+        image-clip: 0 0 22 20
+
+      Label
+        id: accountStatusLabel
+        anchors.left: accountStatusIcon.right
+        anchors.right: premiumButton.left
+        anchors.top: parent.top
+        margin-left: 6
+        margin-right: 8
+        height: 48
+        color: #c5d1dc
+        text-align: left
+
+        $on:
+          color: #ff8b78
+
+      MobileCharacterButton
+        id: premiumButton
+        anchors.right: parent.right
+        anchors.top: parent.top
+        width: 112
+        !text: tr('Get Premium')
+        @onClick: onPremiumButtonClick(self)
+
+    Panel
+      id: characterFilters
+      anchors.left: parent.left
+      anchors.right: parent.right
+      anchors.top: characterHeader.bottom
+      height: 48
+      background-color: #0d1622aa
+
+      QtCheckBox
+        id: checkBoxHidden
+        anchors.left: parent.left
+        anchors.top: parent.top
+        width: 190
+        height: 48
+        checked: true
+        !text: tr('Show Hidden Characters')
+        @onCheckChange: onShowHiddenCharacters(self, self:isChecked())
+
+      QtCheckBox
+        id: checkBoxOutfit
+        anchors.left: checkBoxHidden.right
+        anchors.top: parent.top
+        width: 150
+        height: 48
+        !text: tr('Show Outfit')
+        @onCheckChange: onShowOutfits(self, self:isChecked())
+
+      Label
+        id: characterHint
+        anchors.left: checkBoxOutfit.right
+        anchors.right: parent.right
+        anchors.top: parent.top
+        height: 48
+        color: #8397aa
+        text-align: right
+        !text: tr('Choose Play on a character')
+
+    TextList
+      id: characters
+      anchors.left: parent.left
+      anchors.right: characterListScrollBar.left
+      anchors.top: characterFilters.bottom
+      anchors.bottom: characterActions.top
+      margin-top: 6
+      margin-right: 4
+      margin-bottom: 6
+      background-color: #0b131eee
+      border-width: 1
+      border-color: #52687a55
+      padding: 2
+      spacing: 4
+      focusable: false
+      vertical-scrollbar: characterListScrollBar
+      auto-focus: first
+
+    VerticalScrollBar
+      id: characterListScrollBar
+      anchors.top: characterFilters.bottom
+      anchors.bottom: characterActions.top
+      anchors.right: parent.right
+      margin-top: 6
+      margin-bottom: 6
+      step: 72
+      pixels-scroll: true
+
+    Panel
+      id: characterTable
+      visible: false
+      height: 0
+
+    Panel
+      id: premiumBenefitsPanel
+      visible: false
+      height: 0
+
+    Panel
+      id: characterActions
+      anchors.left: parent.left
+      anchors.right: parent.right
+      anchors.bottom: parent.bottom
+      height: 48
+
+      MobileCharacterButton
+        id: autoReconnect
+        anchors.left: parent.left
+        anchors.top: parent.top
+        width: 164
+
+        $!on:
+          image-color: #d66b62
+
+        $on:
+          image-color: #6fbc88
+
+      MobileCharacterButton
+        id: buttonOk
+        visible: false
+        anchors.right: buttonCancel.left
+        anchors.top: parent.top
+        width: 96
+        margin-right: 8
+        !text: tr('Play')
+        @onClick: CharacterList.doLogin()
+
+      MobileCharacterButton
+        id: buttonCancel
+        anchors.right: parent.right
+        anchors.top: parent.top
+        width: 112
+        !text: tr('Back')
+        @onClick: CharacterList.hide(true)
