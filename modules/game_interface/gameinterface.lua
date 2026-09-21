@@ -341,12 +341,20 @@ function hide()
 end
 
 function save()
+    if mobileV2 then
+        return
+    end
+
     local settings = {}
     settings.splitterMarginBottom = bottomSplitter:getMarginBottom()
     g_settings.setNode('game_interface', settings)
 end
 
 function load()
+    if mobileV2 then
+        return
+    end
+
     local settings = g_settings.getNode('game_interface')
     if settings then
         if settings.splitterMarginBottom then
@@ -465,6 +473,10 @@ function tryLogout(prompt)
 end
 
 function updateStretchShrink()
+    if mobileV2 then
+        return
+    end
+
     if modules.client_options.getOption('dontStretchShrink') and not alternativeView then
         gameMapPanel:setVisibleDimension({
             width = 15,
