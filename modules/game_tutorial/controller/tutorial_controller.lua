@@ -189,7 +189,7 @@ local function setupCards(self)
             self.vocationWidgets[vocation.id] = widgets
             if mobileLayout then
                 local handle = self.mobileModalHandle
-                if handle then
+                if handle and handle:isOpen() then
                     handle:bindBodyWidget(card)
                 end
             else
@@ -202,7 +202,7 @@ end
 
 local function consumeMobileBodyGesture(self)
     local handle = self.mobileModalHandle
-    return handle and handle:consumeBodyGesture() or false
+    return handle and handle:isOpen() and handle:consumeBodyGesture() or false
 end
 
 local function clearTutorialUiState(self)
@@ -290,6 +290,8 @@ function TutorialController:show()
     end
 
     local mobileLayout = isMobileV2()
+    self.mobileModalGeneration = (self.mobileModalGeneration or 0) + 1
+    local generation = self.mobileModalGeneration
     self:loadHtml(mobileLayout and "template/html/tutorial-mobile.html" or "template/html/tutorial.html")
     if not self.ui then
         g_logger.error("[game_tutorial] failed to load tutorial layout")
@@ -298,19 +300,41 @@ function TutorialController:show()
 
     if mobileLayout then
         local tutorialUi = self.ui
+        local session = {
+            generation = generation,
+            ui = tutorialUi,
+            closed = false
+        }
         tutorialUi:hide()
         local handle = mobileUiModule().showModal({
             title = tr('Choose Your Path'),
             body = tutorialUi,
             buttons = {},
             onClose = function()
-                clearTutorialUiState(self)
-                self.mobileModalHandle = nil
-                if self.ui then
+                session.closed = true
+                if self.mobileModalSession == session and
+                    self.mobileModalGeneration == generation then
+                    clearTutorialUiState(self)
+                    self.mobileModalSession = nil
+                    if self.mobileModalHandle == session.handle then
+                        self.mobileModalHandle = nil
+                    end
+                end
+                if self.ui == tutorialUi then
                     self:unloadHtml()
                 end
             end
         })
+        session.handle = handle
+
+        if not handle:isOpen() or self.mobileModalGeneration ~= generation or
+            self.ui ~= tutorialUi then
+            if handle:isOpen() then
+                handle:close()
+            end
+            return
+        end
+        self.mobileModalSession = session
         self.mobileModalHandle = handle
         tutorialUi:show()
         handle:bindBodyWidget(tutorialUi)
@@ -320,8 +344,24 @@ end
 function TutorialController:hide()
     clearTutorialUiState(self)
 
-    if self.mobileModalHandle then
-        self.mobileModalHandle:close()
+    local session = self.mobileModalSession
+    local handle = self.mobileModalHandle
+    if session then
+        session.closed = true
+        self.mobileModalSession = nil
+        if self.mobileModalHandle == session.handle then
+            self.mobileModalHandle = nil
+        end
+        if session.handle and session.handle:isOpen() then
+            session.handle:close()
+        elseif self.ui == session.ui then
+            self:unloadHtml()
+        end
+    elseif handle then
+        self.mobileModalHandle = nil
+        if handle:isOpen() then
+            handle:close()
+        end
     elseif self.ui then
         self:unloadHtml()
     end
@@ -336,7 +376,7 @@ function TutorialController:onVocationCardsRendered()
         return
     end
     resetAllCards(self)
-    if self.mobileModalHandle then
+    if self.mobileModalHandle and self.mobileModalHandle:isOpen() then
         self.mobileModalHandle:bindBodyWidget(self.ui)
         self.mobileModalHandle.widget:raise()
         self.mobileModalHandle.widget:focus()

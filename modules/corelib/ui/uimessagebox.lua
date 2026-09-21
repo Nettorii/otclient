@@ -32,6 +32,8 @@ local function displayMobileMessageBox(title, message, buttons, onEnterCallback,
     content:setHeight(math.max(48, content:getHeight() + 16))
 
     local messageBox = UIMessageBox.internalCreate()
+    local modalSession = {}
+    messageBox.mobileModalSession = modalSession
     local modalButtons = {}
     for _, button in ipairs(buttons or {}) do
         table.insert(modalButtons, {
@@ -47,16 +49,28 @@ local function displayMobileMessageBox(title, message, buttons, onEnterCallback,
         onEnter = onEnterCallback,
         onEscape = onEscapeCallback,
         onClose = function()
-            if not messageBox or messageBox:isDestroyed() then
+            if not messageBox or messageBox:isDestroyed() or
+                messageBox.mobileModalSession ~= modalSession then
                 return
             end
-            messageBox.mobileModalHandle = nil
+            messageBox.mobileModalSession = nil
+            if messageBox.mobileModalHandle == modalSession.handle then
+                messageBox.mobileModalHandle = nil
+            end
             if not messageBox.mobileModalDestroying then
                 messageBox:destroy()
             end
         end
     })
+    modalSession.handle = handle
 
+    if not handle:isOpen() or messageBox:isDestroyed() then
+        if not messageBox:isDestroyed() then
+            messageBox.mobileModalSession = nil
+            messageBox:destroy()
+        end
+        return messageBox
+    end
     messageBox.mobileModalHandle = handle
     messageBox.title = handle.title
     messageBox.content = content
@@ -204,6 +218,7 @@ function UIMessageBox:onDestroy()
     UIWindow.onDestroy(self)
     local handle = self.mobileModalHandle
     self.mobileModalHandle = nil
+    self.mobileModalSession = nil
     if handle and handle:isOpen() then
         self.mobileModalDestroying = true
         handle:close()

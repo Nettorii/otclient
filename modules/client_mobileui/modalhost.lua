@@ -1,4 +1,46 @@
 local activeModal
+local replacementSnapshot
+
+local function installKeyboardReceiverTracker()
+  if UIWidget.mobileModalKeyboardReceiverTracker then
+    return UIWidget.mobileModalKeyboardReceiverTracker
+  end
+
+  local tracker = {}
+  local nativeGrabKeyboard = UIWidget.grabKeyboard
+  local nativeUngrabKeyboard = UIWidget.ungrabKeyboard
+
+  UIWidget.grabKeyboard = function(widget)
+    tracker.receiver = widget
+    return nativeGrabKeyboard(widget)
+  end
+
+  UIWidget.ungrabKeyboard = function(widget)
+    local result = nativeUngrabKeyboard(widget)
+    if tracker.receiver == widget and not g_ui.isKeyboardGrabbed() then
+      tracker.receiver = nil
+    end
+    return result
+  end
+
+  UIWidget.mobileModalKeyboardReceiverTracker = tracker
+  return tracker
+end
+
+local keyboardReceiverTracker = installKeyboardReceiverTracker()
+
+local function getKeyboardReceiver()
+  if not g_ui.isKeyboardGrabbed() then
+    keyboardReceiverTracker.receiver = nil
+    return nil
+  end
+
+  local receiver = keyboardReceiverTracker.receiver
+  if receiver and not receiver:isDestroyed() then
+    return receiver
+  end
+  return nil
+end
 
 local function safeCall(callback, ...)
   if not callback then
@@ -76,6 +118,67 @@ local function createBodyScroller(scrollBar)
   return scroller
 end
 
+local function createFooterScroller(scrollBar)
+  local lastX
+  local dragDistance = 0
+  local dragged = false
+
+  local function onMousePress(_, position, button)
+    if button ~= MouseLeftButton then
+      return false
+    end
+    lastX = position.x
+    dragDistance = 0
+    dragged = false
+    return false
+  end
+
+  local function onMouseMove(_, position)
+    if not lastX or not g_mouse.isPressed(MouseLeftButton) then
+      return false
+    end
+
+    local delta = lastX - position.x
+    lastX = position.x
+    dragDistance = dragDistance + math.abs(delta)
+    if dragDistance >= 6 then
+      dragged = true
+      scrollBar:setValue(scrollBar:getValue() + delta)
+    end
+    return dragged
+  end
+
+  local function onMouseRelease(_, _, button)
+    if button ~= MouseLeftButton then
+      return false
+    end
+    lastX = nil
+    return dragged
+  end
+
+  local scroller = {}
+
+  function scroller.bind(widget)
+    if not widget or widget:isDestroyed() or widget.mobileModalFooterScrollBound then
+      return
+    end
+    widget.mobileModalFooterScrollBound = true
+    connect(widget, {
+      onMousePress = onMousePress,
+      onMouseMove = onMouseMove,
+      onMouseRelease = onMouseRelease
+    })
+  end
+
+  function scroller.consume()
+    local consumed = dragged
+    dragged = false
+    return consumed
+  end
+
+  return scroller
+end
+
 local function bindWidgetTree(scroller, widget)
   if not widget or widget:isDestroyed() then
     return
@@ -86,17 +189,68 @@ local function bindWidgetTree(scroller, widget)
   end
 end
 
+local function getFocusedWidget()
+  local root = g_ui.getRootWidget()
+  local focused = root:getFocusedChild()
+  while focused do
+    local child = focused:getFocusedChild()
+    if not child then
+      return focused
+    end
+    focused = child
+  end
+  return nil
+end
+
+local function isRestorableWidget(widget, requireFocusable)
+  if not widget or widget:isDestroyed() or
+      (requireFocusable and not widget:isFocusable()) then
+    return false
+  end
+
+  local root = g_ui.getRootWidget()
+  local current = widget
+  while current and current ~= root do
+    if current:isDestroyed() or not current:isVisible() or not current:isEnabled() then
+      return false
+    end
+    current = current:getParent()
+  end
+  return current == root
+end
+
 function showModal(config)
   assert(type(config) == 'table', 'modal config must be a table')
 
   local previousState
   local previousOwner
+  local previousFocusedWidget
+  local previousKeyboardReceiver
+  local supersededDuringReplacement = false
   if activeModal and activeModal:isOpen() then
     previousState = activeModal.previousForegroundState
     previousOwner = activeModal.previousForegroundOwner
+    previousFocusedWidget = activeModal.previousFocusedWidget
+    previousKeyboardReceiver = activeModal.previousKeyboardReceiver
+    local outerSnapshot = replacementSnapshot
+    replacementSnapshot = {
+      state = previousState,
+      owner = previousOwner,
+      focusedWidget = previousFocusedWidget,
+      keyboardReceiver = previousKeyboardReceiver
+    }
     activeModal:replace()
+    replacementSnapshot = outerSnapshot
+    supersededDuringReplacement = activeModal ~= nil
+  elseif replacementSnapshot then
+    previousState = replacementSnapshot.state
+    previousOwner = replacementSnapshot.owner
+    previousFocusedWidget = replacementSnapshot.focusedWidget
+    previousKeyboardReceiver = replacementSnapshot.keyboardReceiver
   else
     previousState, previousOwner = getForeground()
+    previousFocusedWidget = getFocusedWidget()
+    previousKeyboardReceiver = getKeyboardReceiver()
   end
 
   local root = g_ui.getRootWidget()
@@ -106,7 +260,9 @@ function showModal(config)
   local bodyArea = surface:recursiveGetChildById('modalBody')
   local bodyScrollBar = surface:recursiveGetChildById('modalBodyScrollBar')
   local footer = surface:recursiveGetChildById('modalFooter')
+  local footerScrollBar = surface:recursiveGetChildById('modalFooterScrollBar')
   local bodyScroller = createBodyScroller(bodyScrollBar)
+  local footerScroller = createFooterScroller(footerScrollBar)
   local bodyWidget
   local buttons = {}
   local handle = {}
@@ -117,8 +273,11 @@ function showModal(config)
   handle.widget = backdrop
   handle.previousForegroundState = previousState
   handle.previousForegroundOwner = previousOwner
+  handle.previousFocusedWidget = previousFocusedWidget
+  handle.previousKeyboardReceiver = previousKeyboardReceiver
   handle.title = titleLabel
   handle.holder = footer
+  handle.footerScrollBar = footerScrollBar
 
   local function updateButtonWidths()
     local count = #buttons
@@ -127,7 +286,12 @@ function showModal(config)
     end
 
     local spacing = math.max(0, count - 1) * 8
-    local width = math.max(48, math.floor((footer:getWidth() - spacing) / count))
+    local availableWidth = math.max(0,
+      footer:getWidth() - footer:getPaddingLeft() - footer:getPaddingRight())
+    local width = 48
+    if count * width + spacing <= availableWidth then
+      width = math.max(48, math.floor((availableWidth - spacing) / count))
+    end
     for _, button in ipairs(buttons) do
       button:setWidth(width)
       button:setHeight(48)
@@ -168,15 +332,29 @@ function showModal(config)
 
     safeCall(config.onClose)
 
+    local state, owner = getForeground()
+    local ownsForeground = state == 'modal' and owner == handle
+
     if destroyWidget and not backdrop:isDestroyed() then
       backdrop:ungrabKeyboard()
       backdrop:destroy()
     end
 
-    if not replacing then
-      local state, owner = getForeground()
-      if state == 'modal' and owner == handle then
-        setForeground(previousState or 'gameplay', previousOwner)
+    if not replacing and ownsForeground then
+      local currentState, currentOwner = getForeground()
+      if currentState ~= 'modal' or currentOwner ~= handle then
+        return
+      end
+      setForeground(previousState or 'gameplay', previousOwner)
+      local restoredState, restoredOwner = getForeground()
+      if restoredState == (previousState or 'gameplay') and
+          restoredOwner == previousOwner then
+        if isRestorableWidget(previousFocusedWidget, true) then
+          previousFocusedWidget:focus()
+        end
+        if isRestorableWidget(previousKeyboardReceiver, false) then
+          previousKeyboardReceiver:grabKeyboard()
+        end
       end
     end
   end
@@ -251,14 +429,25 @@ function showModal(config)
     local button = g_ui.createWidget('MobileModalButton', footer)
     button:setText(buttonConfig.text or '')
     button.onClick = function()
+      if footerScroller.consume() then
+        return
+      end
       safeCall(buttonConfig.callback)
     end
+    footerScroller.bind(button)
     table.insert(buttons, button)
   end
+  footerScroller.bind(footer)
   updateButtonWidths()
 
   if config.body then
     handle:setBody(config.body)
+  end
+
+  if supersededDuringReplacement then
+    replacing = true
+    finish(true)
+    return handle
   end
 
   unsubscribeProfile = subscribeProfile(applyGeometry)

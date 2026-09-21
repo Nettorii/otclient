@@ -17,10 +17,36 @@ local function isMobileV2()
     return mobileUi and mobileUi.isV2Enabled and mobileUi.isV2Enabled() or false
 end
 
+local function closeModalSession(session)
+    if not session or session.closed then
+        return
+    end
+    session.closed = true
+
+    if controllerModal.modalSession == session then
+        controllerModal.modalSession = nil
+    end
+    if controllerModal.mobileModalSession == session then
+        controllerModal.mobileModalSession = nil
+    end
+    local handle = session.handle
+    if controllerModal.mobileModalHandle == handle then
+        controllerModal.mobileModalHandle = nil
+    end
+    if handle and handle:isOpen() then
+        handle:close()
+        return
+    end
+
+    if session.ui and controllerModal.ui == session.ui then
+        controllerModal:unloadHtml()
+    end
+end
+
 local function destroyWindow()
-    local modalHandle = controllerModal.mobileModalHandle
-    if modalHandle then
-        modalHandle:close()
+    local session = controllerModal.modalSession or controllerModal.mobileModalSession
+    if session then
+        closeModalSession(session)
         return
     end
 
@@ -43,12 +69,20 @@ function controllerModal:onGameEnd()
     destroyWindow()
 end
 
-local function createButtonHandler(id, buttonId, choiceList)
+local function createButtonHandler(session, buttonId, choiceList)
     return function()
+        if session.answered or session.closed then
+            return
+        end
         local focusedChoice = choiceList and choiceList:getFocusedChild()
         local choice = (choiceList and choiceList.selectedChoice) or (focusedChoice and focusedChoice.choiceId) or 0xFF
-        g_game.answerModalDialog(id, buttonId, choice)
-        destroyWindow()
+        session.answered = true
+        local ok, errorMessage = pcall(
+            g_game.answerModalDialog, session.id, buttonId, choice)
+        closeModalSession(session)
+        if not ok then
+            error(errorMessage)
+        end
     end
 end
 
@@ -133,12 +167,13 @@ local function applyFinalHeight(ui, messageLabel, additionalHeight)
     controllerModal:findWidget('#choiceList'):setWidth(ui:getWidth() * 0.9) -- html not work "Width:100%"
 end
 
-local function showMobileModalDialog(id, title, message, buttons, enterButton, escapeButton, choices)
+local function showMobileModalDialog(session, title, message, buttons, enterButton, escapeButton, choices)
     controllerModal:loadHtml('modaldialog-mobile.html')
     local ui = controllerModal.ui
     if not ui then
         return
     end
+    session.ui = ui
     ui:hide()
 
     local mobileUi = mobileUiModule()
@@ -153,8 +188,8 @@ local function showMobileModalDialog(id, title, message, buttons, enterButton, e
     messageLabel:setWidth(contentWidth)
     messageLabel:html(message)
 
-    local enterFunc = createButtonHandler(id, enterButton, choiceList)
-    local escapeFunc = createButtonHandler(id, escapeButton, choiceList)
+    local enterFunc = createButtonHandler(session, enterButton, choiceList)
+    local escapeFunc = createButtonHandler(session, escapeButton, choiceList)
     if #choices > 0 then
         choiceList:setVisible(true)
         for i, choiceData in ipairs(choices) do
@@ -197,7 +232,7 @@ local function showMobileModalDialog(id, title, message, buttons, enterButton, e
     for _, buttonData in ipairs(buttons) do
         table.insert(modalButtons, {
             text = buttonData[2],
-            callback = createButtonHandler(id, buttonData[1], choiceList)
+            callback = createButtonHandler(session, buttonData[1], choiceList)
         })
     end
 
@@ -237,12 +272,32 @@ local function showMobileModalDialog(id, title, message, buttons, enterButton, e
             return false
         end,
         onClose = function()
-            controllerModal.mobileModalHandle = nil
-            if controllerModal.ui then
+            session.closed = true
+            if controllerModal.mobileModalSession == session then
+                controllerModal.mobileModalSession = nil
+            end
+            if controllerModal.modalSession == session then
+                controllerModal.modalSession = nil
+            end
+            if controllerModal.mobileModalHandle == session.handle then
+                controllerModal.mobileModalHandle = nil
+            end
+            if controllerModal.ui == ui then
                 controllerModal:unloadHtml()
             end
         end
     })
+    session.handle = handle
+
+    if not handle:isOpen() or controllerModal.modalGeneration ~= session.generation or
+        controllerModal.ui ~= ui then
+        if handle:isOpen() then
+            handle:close()
+        end
+        return
+    end
+    controllerModal.modalSession = session
+    controllerModal.mobileModalSession = session
     controllerModal.mobileModalHandle = handle
 
     local choicesHeight = #choices > 0 and math.max(48, #choices * 48) or 0
@@ -257,7 +312,12 @@ local function showMobileModalDialog(id, title, message, buttons, enterButton, e
 end
 
 function onModalDialog(id, title, message, buttons, enterButton, escapeButton, choices, priority)
+    controllerModal.modalGeneration = (controllerModal.modalGeneration or 0) + 1
+    local generation = controllerModal.modalGeneration
     destroyWindow()
+    if controllerModal.modalGeneration ~= generation then
+        return
+    end
 
     -- C++ parse currently uses clientVersion for enter/escape byte order.
     local protocolVersion = g_game.getProtocolVersion()
@@ -268,8 +328,14 @@ function onModalDialog(id, title, message, buttons, enterButton, escapeButton, c
         enterButton, escapeButton = escapeButton, enterButton
     end
     enterButton, escapeButton = resolveModalButtons(buttons, enterButton, escapeButton)
+    local session = {
+        id = id,
+        generation = generation,
+        answered = false,
+        closed = false
+    }
     if isMobileV2() then
-        showMobileModalDialog(id, title, message, buttons, enterButton, escapeButton, choices)
+        showMobileModalDialog(session, title, message, buttons, enterButton, escapeButton, choices)
         return
     end
 
@@ -281,8 +347,10 @@ function onModalDialog(id, title, message, buttons, enterButton, escapeButton, c
     local messageLabel = controllerModal:findWidget('#messageLabel')
     local choiceList = controllerModal:findWidget('#choiceList')
     local buttonsPanel = controllerModal:findWidget('#buttonsPanel')
-    local enterFunc = createButtonHandler(id, enterButton, choiceList)
-    local escapeFunc = createButtonHandler(id, escapeButton, choiceList)
+    session.ui = ui
+    controllerModal.modalSession = session
+    local enterFunc = createButtonHandler(session, enterButton, choiceList)
+    local escapeFunc = createButtonHandler(session, escapeButton, choiceList)
     local confirmKeysEnabledAt = g_clock.millis() + 180
     local firstChoiceWidget = nil
     ui:setTitle(title)
@@ -327,7 +395,7 @@ function onModalDialog(id, title, message, buttons, enterButton, escapeButton, c
         local button = controllerModal:createWidgetFromHTML(buttonHtml, buttonsPanel)
 
         if button then
-            button.onClick = createButtonHandler(id, buttonId, choiceList)
+            button.onClick = createButtonHandler(session, buttonId, choiceList)
             buttonsWidth = buttonsWidth + button:getWidth() + button:getMarginLeft() + button:getMarginRight()
         end
     end
@@ -369,6 +437,10 @@ function onModalDialog(id, title, message, buttons, enterButton, escapeButton, c
     calculateAndSetWidth(ui, messageLabel, buttonsWidth, message)
     local additionalHeight = calculateChoicesHeight(choiceList, choices, labelHeight)
     controllerModal:scheduleEvent(function()
+        if session.closed or controllerModal.modalGeneration ~= generation or
+            controllerModal.modalSession ~= session or controllerModal.ui ~= ui then
+            return
+        end
         applyFinalHeight(ui, messageLabel, additionalHeight)
         ui:show()
         ui:raise()

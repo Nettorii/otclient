@@ -61,7 +61,7 @@ MobileModalBackdrop < Panel
       step: 48
       pixels-scroll: true
 
-    Panel
+    UIScrollArea
       id: modalFooter
       anchors.left: parent.left
       anchors.right: parent.right
@@ -72,7 +72,18 @@ MobileModalBackdrop < Panel
       background-color: #101c29ee
       border-width-top: 1
       border-color-top: #7891a455
+      clipping: true
+      horizontal-scrollbar: modalFooterScrollBar
       layout:
         type: horizontalBox
         spacing: 8
-        align-right: true
+
+    HorizontalScrollBar
+      id: modalFooterScrollBar
+      anchors.left: parent.left
+      anchors.right: parent.right
+      anchors.bottom: parent.bottom
+      height: 0
+      visible: false
+      step: 48
+      pixels-scroll: true
