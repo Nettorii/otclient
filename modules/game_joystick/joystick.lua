@@ -31,20 +31,30 @@ function terminate()
 
   cancelGesture()
 
-  disconnect(keypad, {
-    onMousePress = onKeypadTouchPress,
-    onMouseRelease = onKeypadTouchRelease,  
-    onMouseMove = onKeypadTouchMove
-  })
+  if keypad then
+    disconnect(keypad, {
+      onMousePress = onKeypadTouchPress,
+      onMouseRelease = onKeypadTouchRelease,
+      onMouseMove = onKeypadTouchMove
+    })
+  end
 
   disconnect(g_game, {
     onGameStart = onGameStart,
     onGameEnd = onGameEnd 
   })
 
-  overlay:destroy()
+  if overlay then
+    overlay:destroy()
+  end
   overlay = nil
+  keypad = nil
   keypadUpdateEvent = nil
+  keypadMousePos = {x=0.5, y=0.5}
+  firstStep = true
+  moveListener = nil
+  joystickEnabled = false
+  gestureActive = false
 end
 
 function hide()
@@ -138,7 +148,10 @@ function onKeypadTouchMove(widget, pos, offset)
 end
 
 function onKeypadTouchRelease(widget, pos, button)
-  if button == MouseRightButton then return true end
+  if button == MouseRightButton then
+    cancelGesture()
+    return true
+  end
   if button ~= MouseLeftButton then return false end
   if not gestureActive then return true end
 
@@ -202,6 +215,7 @@ function executeWalk(initialPress)
 
   if dir and moveListener then
     moveListener(dir, firstStep)
+    firstStep = false
   end
 end
 
