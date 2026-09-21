@@ -104,6 +104,24 @@ function MobileScrollGesture.create(scrollBar)
                 onMouseRelease = onMouseRelease
             })
         end,
+        bindDeferredPress = function(widget, tapAction)
+            widget.onMousePress = function(self, position, button)
+                if button ~= MouseLeftButton then
+                    return tapAction(self, position, button)
+                end
+                onMousePress(self, position, button)
+                return true
+            end
+            widget.onMouseMove = function(self, position)
+                return onMouseMove(self, position)
+            end
+            widget.onMouseRelease = function(self, position, button)
+                if button ~= MouseLeftButton then return false end
+                local consumed = onMouseRelease(self, position, button)
+                if consumed then return true end
+                return tapAction(self, position, button)
+            end
+        end,
         consumeAction = function(widget)
             if not dragged then
                 return false

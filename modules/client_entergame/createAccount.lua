@@ -18,6 +18,7 @@ local UIwidgetImagen = {
     CharacterData = nil
 }
 
+local UIComboBoxClass = UIComboBox
 local UIComboBox = {
     world = nil,
     pvp = nil
@@ -113,6 +114,11 @@ local function setupMobileLayout()
     local worldScrollBar = MainWindowsCreateAccount:recursiveGetChildById('worldBodyScrollBar')
     worldBodyScroller = MobileScrollGesture.create(worldScrollBar)
     worldBodyScroller.bind(worldBody)
+    local function openComboMenu(widget, position, button)
+        return UIComboBoxClass.onMousePress(widget, position, button)
+    end
+    worldBodyScroller.bindDeferredPress(UIComboBox.world, openComboMenu)
+    worldBodyScroller.bindDeferredPress(UIComboBox.pvp, openComboMenu)
 
     local worldListScrollBar = MainWindowsCreateAccount:recursiveGetChildById('ListScrollBar')
     worldListScroller = MobileScrollGesture.create(worldListScrollBar)
