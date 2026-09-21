@@ -1,0 +1,285 @@
+MobileLoginField < TextQtEdit
+  height: 48
+  text-offset: 8 15
+  padding: 8
+  background-color: #0d1622ee
+
+MobilePasswordField < HiddenTextQtEdit
+  height: 48
+  text-offset: 8 15
+  padding: 8
+  background-color: #0d1622ee
+
+MobileLoginCheckBox < QtCheckBox
+  height: 48
+  text-offset: 22 17
+
+MobileLoginButton < QtButton
+  height: 48
+  font: verdana-11px-antialised
+
+UIWindow
+  id: enterGame
+  &authenticatorEnabled: false
+  &authenticatorHeight: 44
+  &stayLoggedBoxEnabled: false
+  &stayLoggedBoxHeight: 24
+  background-color: #070c13ee
+  clipping: true
+  anchors.fill: parent
+  @onEnter: EnterGame.doLogin()
+
+  MobileUISurface
+    id: loginSurface
+    size: 540 316
+    anchors.centerIn: parent
+    padding: 12
+
+    Label
+      id: loginTitle
+      font: cipsoftFont
+      color: #f4f7fa
+      anchors.top: parent.top
+      anchors.left: parent.left
+      height: 40
+      text-auto-resize: true
+
+    QtButton
+      id: connectionSettingsButton
+      !text: tr('Connection settings')
+      anchors.top: parent.top
+      anchors.right: parent.right
+      size: 176 48
+      @onClick: EnterGame.toggleConnectionSettings()
+
+    Label
+      id: emailLabel
+      !text: tr('Acc Name:')
+      color: #aebdca
+      anchors.left: parent.left
+      anchors.top: loginTitle.bottom
+      width: 294
+      height: 16
+
+    MobileLoginField
+      id: accountNameTextEdit
+      anchors.left: parent.left
+      anchors.right: parent.horizontalCenter
+      anchors.top: emailLabel.bottom
+      margin-right: 8
+
+    Label
+      id: passwordLabel
+      !text: tr('Password:')
+      color: #aebdca
+      anchors.left: parent.left
+      anchors.top: accountNameTextEdit.bottom
+      margin-top: 4
+      width: 294
+      height: 16
+
+    MobilePasswordField
+      id: accountPasswordTextEdit
+      anchors.left: parent.left
+      anchors.right: parent.horizontalCenter
+      anchors.top: passwordLabel.bottom
+      margin-right: 8
+
+    Label
+      id: loginErrorLabel
+      visible: false
+      color: #ff8b78
+      text-wrap: true
+      text-align: left
+      anchors.left: parent.left
+      anchors.right: parent.horizontalCenter
+      anchors.top: accountPasswordTextEdit.bottom
+      margin-top: 5
+      margin-right: 8
+      height: 34
+
+    MobileLoginCheckBox
+      id: rememberEmailBox
+      !text: tr('Remember password')
+      !tooltip: tr('Remember account and password when starts client')
+      anchors.left: parent.horizontalCenter
+      anchors.right: parent.right
+      anchors.top: connectionSettingsButton.bottom
+      margin-left: 8
+      @onCheckChange: |
+        self:getParent():getChildById('autoLoginBox'):setEnabled(self:isChecked())
+        self:getParent():getChildById('rememberEmailTip'):setOn(self:isChecked())
+
+    UIWidget
+      id: rememberEmailTip
+      image-source: /images/icons/show_gui_help_grey
+      !specialtooltip: 'Be aware that your email address will be stored on your configuration file "config.otml" if you activate this option.'
+      anchors.right: rememberEmailBox.right
+      anchors.verticalCenter: rememberEmailBox.verticalCenter
+      visible: false
+
+      $on:
+        visible: true
+
+      $!on:
+        visible: false
+
+    MobileLoginCheckBox
+      id: autoLoginBox
+      enabled: false
+      !text: tr('Auto login')
+      !tooltip: tr('Open charlist automatically when starting client')
+      anchors.left: rememberEmailBox.left
+      anchors.right: parent.right
+      anchors.top: rememberEmailBox.bottom
+
+    MobileLoginCheckBox
+      id: stayLoggedBox
+      !text: tr('Stay logged during session')
+      anchors.left: rememberEmailBox.left
+      anchors.right: parent.right
+      anchors.top: autoLoginBox.bottom
+      visible: false
+
+      $on:
+        visible: true
+
+    UIButton
+      id: Forgot_password_email
+      !text: tr('Forgot password and/or email')
+      font: verdana-11px-monochrome-underline
+      text-align: left
+      anchors.left: rememberEmailBox.left
+      anchors.right: parent.right
+      anchors.top: stayLoggedBox.bottom
+      height: 48
+      @onClick: g_platform.openUrl(Services.websites)
+      @onSetup: |
+        if Services and Services.websites then
+          self:setVisible(true)
+        else
+          self:setVisible(false)
+          self:hide()
+        end
+
+    Label
+      id: serverInfoLabel
+      font: verdana-11px-rounded
+      color: #7ed89b
+      text-wrap: true
+      anchors.left: parent.left
+      anchors.right: parent.horizontalCenter
+      anchors.top: loginErrorLabel.bottom
+      margin-right: 8
+      height: 24
+
+    MobileLoginButton
+      id: btnCreateNewAccount
+      !text: tr('Create New Account')
+      anchors.left: parent.left
+      anchors.right: parent.horizontalCenter
+      anchors.bottom: parent.bottom
+      margin-right: 4
+      @onClick: |
+        self:disable()
+        createWidgetAccount()
+      @onSetup: |
+        if Services and Servers_init and table.size(Servers_init) == 1 and Services.createAccount then
+          self:setVisible(true)
+        else
+          self:setVisible(false)
+        end
+
+    MobileLoginButton
+      id: loginButton
+      !text: tr('Login')
+      anchors.left: parent.horizontalCenter
+      anchors.right: parent.right
+      anchors.bottom: parent.bottom
+      margin-left: 4
+      @onClick: EnterGame.doLogin()
+
+    Panel
+      id: connectionSettingsPanel
+      visible: false
+      background-color: #101b29fa
+      border-width: 1
+      border-color: #7890a466
+      anchors.top: connectionSettingsButton.bottom
+      anchors.right: parent.right
+      anchors.bottom: loginButton.top
+      width: 300
+      padding: 6
+
+      Label
+        id: serverLabel
+        !text: tr('Server')
+        anchors.left: parent.left
+        anchors.top: parent.top
+        width: 44
+        height: 48
+        text-align: center
+
+      MobileLoginField
+        id: serverHostTextEdit
+        !tooltip: tr('Make sure that your client uses\nthe correct game client version')
+        anchors.left: serverLabel.right
+        anchors.right: serverListButton.left
+        anchors.top: parent.top
+        margin-left: 4
+        margin-right: 4
+
+      QtButton
+        id: serverListButton
+        !text: tr('List')
+        !tooltip: tr('Server list')
+        anchors.top: parent.top
+        anchors.right: parent.right
+        size: 48 48
+        @onClick: EnterGame.showServerList()
+
+      Label
+        id: clientLabel
+        !text: tr('Client')
+        anchors.left: parent.left
+        anchors.top: serverHostTextEdit.bottom
+        width: 36
+        height: 48
+        text-align: center
+
+      ComboBox
+        id: clientComboBox
+        anchors.left: clientLabel.right
+        anchors.top: serverHostTextEdit.bottom
+        margin-left: 4
+        size: 72 48
+        menu-scroll: true
+        menu-height: 125
+        menu-scroll-step: 25
+
+      Label
+        id: portLabel
+        !text: tr('Port')
+        anchors.left: clientComboBox.right
+        anchors.top: serverHostTextEdit.bottom
+        margin-left: 6
+        width: 28
+        height: 48
+        text-align: center
+
+      MobileLoginField
+        id: serverPortTextEdit
+        text: 7171
+        anchors.left: portLabel.right
+        anchors.right: parent.right
+        anchors.top: clientComboBox.top
+        margin-left: 4
+
+      MobileLoginCheckBox
+        id: httpLoginBox
+        enabled: true
+        !text: tr('Enable HTTP login')
+        !tooltip: tr('If login fails using HTTPS (encrypted) try with HTTP (unencrypted)')
+        anchors.left: parent.left
+        anchors.right: parent.right
+        anchors.top: clientComboBox.bottom

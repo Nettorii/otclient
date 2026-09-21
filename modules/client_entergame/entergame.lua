@@ -20,6 +20,43 @@ local tokenWindow
 local authErrorBox
 local hasAttemptedAuthenticator = false
 
+local function isMobileV2()
+    return modules.client_mobileui.isV2Enabled()
+end
+
+local function getEnterGameChild(id)
+    return enterGame:recursiveGetChildById(id)
+end
+
+local function showLoginError(message, title)
+    if not isMobileV2() then
+        local errorBox = displayErrorBox(title or tr('Login Error'), message)
+        connect(errorBox, {
+            onOk = EnterGame.show
+        })
+        return
+    end
+
+    if loadBox then
+        loadBox:destroy()
+        loadBox = nil
+    end
+    enterGame:show()
+    enterGame:raise()
+    enterGame:focus()
+    local label = getEnterGameChild('loginErrorLabel')
+    label:setText(message)
+    label:setVisible(true)
+    getEnterGameChild('accountPasswordTextEdit'):focus()
+end
+
+local function clearLoginError()
+    if not isMobileV2() then return end
+    local label = getEnterGameChild('loginErrorLabel')
+    label:setText('')
+    label:setVisible(false)
+end
+
 -- private functions
 local function onError(protocol, message, errorCode)
     if loadBox then
@@ -29,16 +66,22 @@ local function onError(protocol, message, errorCode)
 
     if errorCode == 6 then
         if hasAttemptedAuthenticator then
-            if authErrorBox then
-              authErrorBox:destroy()
+            if isMobileV2() then
+                EnterGame.destroyToken()
+                showLoginError(tr('The token you entered is incorrect.'),
+                    tr('Authentication Failed'))
+            else
+                if authErrorBox then
+                  authErrorBox:destroy()
+                end
+                authErrorBox = displayErrorBox(tr('Authentication Failed'), tr('The token you entered is incorrect.'))
+                connect(authErrorBox, {
+                  onOk = function()
+                    authErrorBox = nil
+                    EnterGame.showAuthenticatorInput()
+                  end
+                })
             end
-            authErrorBox = displayErrorBox(tr('Authentication Failed'), tr('The token you entered is incorrect.'))
-            connect(authErrorBox, {
-              onOk = function()
-                authErrorBox = nil
-                EnterGame.showAuthenticatorInput()
-              end
-            })
         else
             EnterGame.showAuthenticatorInput()
         end
@@ -50,10 +93,7 @@ local function onError(protocol, message, errorCode)
         EnterGame.clearAccountFields()
     end
 
-    local errorBox = displayErrorBox(tr('Login Error'), message)
-    connect(errorBox, {
-        onOk = EnterGame.show
-    })
+    showLoginError(message)
 end
 
 local function onMotd(protocol, motd)
@@ -66,16 +106,16 @@ local function onSessionKey(protocol, sessionKey)
 end
 
 local function onCharacterList(protocol, characters, account, otui)
-    local httpLogin = enterGame:getChildById('httpLoginBox'):isChecked()
+    local httpLogin = getEnterGameChild('httpLoginBox'):isChecked()
 
     -- Try add server to the server list
     ServerList.add(G.host, G.port, g_game.getClientVersion(), httpLogin)
 
     -- Save 'Stay logged in' setting
-    g_settings.set('staylogged', enterGame:getChildById('stayLoggedBox'):isChecked())
+    g_settings.set('staylogged', getEnterGameChild('stayLoggedBox'):isChecked())
     g_settings.set('httpLogin', httpLogin)
 
-    if enterGame:getChildById('rememberEmailBox'):isChecked() then
+    if getEnterGameChild('rememberEmailBox'):isChecked() then
         local account = g_crypt.encrypt(G.account)
         local password = g_crypt.encrypt(G.password)
 
@@ -84,9 +124,9 @@ local function onCharacterList(protocol, characters, account, otui)
 
         ServerList.setServerAccount(G.host, G.account)
         ServerList.setServerPassword(G.host, G.password)
-        ServerList.setServerAutologin(G.host, enterGame:getChildById('autoLoginBox'):isChecked())
+        ServerList.setServerAutologin(G.host, getEnterGameChild('autoLoginBox'):isChecked())
 
-        g_settings.set('autologin', enterGame:getChildById('autoLoginBox'):isChecked())
+        g_settings.set('autologin', getEnterGameChild('autoLoginBox'):isChecked())
         ServerList.save()
     else
         -- reset server list account/password
@@ -145,14 +185,14 @@ local function onUpdateNeeded(protocol, signature)
 end
 
 local function updateLabelText()
-    if enterGame:getChildById('clientComboBox') and tonumber(enterGame:getChildById('clientComboBox'):getText()) > 1080 then
+    if getEnterGameChild('clientComboBox') and tonumber(getEnterGameChild('clientComboBox'):getText()) > 1080 then
         enterGame:setText("Journey Onwards")
-        enterGame:getChildById('emailLabel'):setText("Email:")
-        enterGame:getChildById('rememberEmailBox'):setText("Remember Email:")
+        getEnterGameChild('emailLabel'):setText("Email:")
+        getEnterGameChild('rememberEmailBox'):setText("Remember Email:")
     else
         enterGame:setText("Enter Game")
-        enterGame:getChildById('emailLabel'):setText("Acc Name:")
-        enterGame:getChildById('rememberEmailBox'):setText("Remember password:")
+        getEnterGameChild('emailLabel'):setText("Acc Name:")
+        getEnterGameChild('rememberEmailBox'):setText("Remember password:")
     end
 end
 
@@ -166,7 +206,14 @@ end
 
 -- public functions
 function EnterGame.init()
-    enterGame = g_ui.displayUI('entergame')
+    local mobileV2 = isMobileV2()
+    enterGame = g_ui.displayUI(mobileV2 and 'entergame-mobile' or 'entergame')
+    if mobileV2 then
+        local profile = modules.client_mobileui.getProfile()
+        local surface = getEnterGameChild('loginSurface')
+        surface:setWidth(math.min(540, profile.usableWidth - 24))
+        surface:setHeight(math.min(316, profile.usableHeight - 24))
+    end
     Keybind.new("Misc.", "Change Character", "Ctrl+G", "")
     Keybind.bind("Misc.", "Change Character", {
       {
@@ -195,18 +242,18 @@ function EnterGame.init()
     if serverData and serverData.account then
         EnterGame.setAccountName(serverData.account)
         EnterGame.setPassword(serverData.password)
-        enterGame:getChildById('rememberEmailBox'):setChecked(true)
+        getEnterGameChild('rememberEmailBox'):setChecked(true)
     else
         EnterGame.setAccountName('')
         EnterGame.setPassword('')
-        enterGame:getChildById('rememberEmailBox'):setChecked(false)
+        getEnterGameChild('rememberEmailBox'):setChecked(false)
     end
     
-    enterGame:getChildById('autoLoginBox'):setChecked(serverData.autologin == true)
-    enterGame:getChildById('serverHostTextEdit'):setText(host)
-    enterGame:getChildById('serverPortTextEdit'):setText(port)
-    enterGame:getChildById('stayLoggedBox'):setChecked(stayLogged)
-    enterGame:getChildById('httpLoginBox'):setChecked(httpLogin)
+    getEnterGameChild('autoLoginBox'):setChecked(serverData.autologin == true)
+    getEnterGameChild('serverHostTextEdit'):setText(host)
+    getEnterGameChild('serverPortTextEdit'):setText(port)
+    getEnterGameChild('stayLoggedBox'):setChecked(stayLogged)
+    getEnterGameChild('httpLoginBox'):setChecked(httpLogin)
 
     local installedClients = {}
     if modules.client_assets and modules.client_assets.getInstalledClientVersions then
@@ -225,7 +272,7 @@ function EnterGame.init()
     end
     local canDownloadAssets = modules.client_assets and modules.client_assets.isEnabled and modules.client_assets.isEnabled()
 
-    clientBox = enterGame:getChildById('clientComboBox')
+    clientBox = getEnterGameChild('clientComboBox')
 
     for _, proto in pairs(g_game.getSupportedClients()) do
         local protoStr = tostring(proto)
@@ -247,16 +294,16 @@ function EnterGame.init()
         onOptionChange = EnterGame.onClientVersionChange
     })
 
-    connect(enterGame:getChildById('rememberEmailBox'), {
+    connect(getEnterGameChild('rememberEmailBox'), {
         onCheckChange = function(self, checked)
-            local host = enterGame:getChildById('serverHostTextEdit'):getText()
-            local account = enterGame:getChildById('accountNameTextEdit'):getText()
-            local password = enterGame:getChildById('accountPasswordTextEdit'):getText()
+            local host = getEnterGameChild('serverHostTextEdit'):getText()
+            local account = getEnterGameChild('accountNameTextEdit'):getText()
+            local password = getEnterGameChild('accountPasswordTextEdit'):getText()
 
             if checked and #account > 0 then
                 ServerList.setServerAccount(host, account)
                 ServerList.setServerPassword(host, password)
-                ServerList.setServerAutologin(host, enterGame:getChildById('autoLoginBox'):isChecked() or false)
+                ServerList.setServerAutologin(host, getEnterGameChild('autoLoginBox'):isChecked() or false)
                 g_settings.set('host', host)
             else
                 ServerList.setServerAccount(host, '')
@@ -567,27 +614,27 @@ end
 
 function EnterGame.setAccountName(account)
     local decrypted = safeDecrypt(account or '')
-    enterGame:getChildById('accountNameTextEdit'):setText(decrypted)
-    enterGame:getChildById('accountNameTextEdit'):setCursorPos(-1)
-    enterGame:getChildById('rememberEmailBox'):setChecked(#decrypted > 0)
+    getEnterGameChild('accountNameTextEdit'):setText(decrypted)
+    getEnterGameChild('accountNameTextEdit'):setCursorPos(-1)
+    getEnterGameChild('rememberEmailBox'):setChecked(#decrypted > 0)
 end
 
 function EnterGame.setPassword(password)
-    enterGame:getChildById('accountPasswordTextEdit'):setText(safeDecrypt(password or ''))
+    getEnterGameChild('accountPasswordTextEdit'):setText(safeDecrypt(password or ''))
 end
 
 function EnterGame.setHttpLogin(httpLogin)
     if type(httpLogin) == "boolean" then
-        enterGame:getChildById('httpLoginBox'):setChecked(httpLogin)
+        getEnterGameChild('httpLoginBox'):setChecked(httpLogin)
     else
-        enterGame:getChildById('httpLoginBox'):setChecked(#httpLogin > 0)
+        getEnterGameChild('httpLoginBox'):setChecked(#httpLogin > 0)
     end
 end
 
 function EnterGame.clearAccountFields()
-    enterGame:getChildById('accountNameTextEdit'):clearText()
-    enterGame:getChildById('accountPasswordTextEdit'):clearText()
-    enterGame:getChildById('accountNameTextEdit'):focus()
+    getEnterGameChild('accountNameTextEdit'):clearText()
+    getEnterGameChild('accountPasswordTextEdit'):clearText()
+    getEnterGameChild('accountNameTextEdit'):focus()
     g_settings.remove('account')
     g_settings.remove('password')
 end
@@ -598,7 +645,11 @@ function EnterGame.toggleStayLoggedBox(clientVersion, init)
         return
     end
 
-    enterGame:getChildById('stayLoggedBox'):setOn(enabled)
+    getEnterGameChild('stayLoggedBox'):setOn(enabled)
+    if isMobileV2() then
+        enterGame.stayLoggedBoxEnabled = enabled
+        return
+    end
 
     local newHeight = enterGame:getHeight()
     local newY = enterGame:getY()
@@ -635,10 +686,7 @@ function EnterGame.tryHttpLogin(clientVersion, httpLogin)
             loadBox = nil
         end
 
-        local errorBox = displayErrorBox(tr("Login Error"), string.format("Things are not loaded, please put assets in things/%d/<assets>.", clientVersion))
-        connect(errorBox, {
-            onOk = EnterGame.show
-        })
+        showLoginError(string.format("Things are not loaded, please put assets in things/%d/<assets>.", clientVersion))
         return
     end
 
@@ -779,20 +827,18 @@ function EnterGame.loginFailed(requestId, msg, result)
 end
 
 function EnterGame.doLogin()
-    G.account = enterGame:getChildById('accountNameTextEdit'):getText()
-    G.password = enterGame:getChildById('accountPasswordTextEdit'):getText()
-    G.stayLogged = enterGame:getChildById('stayLoggedBox'):isChecked()
-    G.host = enterGame:getChildById('serverHostTextEdit'):getText()
-    G.port = tonumber(enterGame:getChildById('serverPortTextEdit'):getText())
+    clearLoginError()
+    G.account = getEnterGameChild('accountNameTextEdit'):getText()
+    G.password = getEnterGameChild('accountPasswordTextEdit'):getText()
+    G.stayLogged = getEnterGameChild('stayLoggedBox'):isChecked()
+    G.host = getEnterGameChild('serverHostTextEdit'):getText()
+    G.port = tonumber(getEnterGameChild('serverPortTextEdit'):getText())
     local clientVersion = tonumber(clientBox:getText())
     G.clientVersion = clientVersion
-    local httpLogin = enterGame:getChildById('httpLoginBox'):isChecked()
+    local httpLogin = getEnterGameChild('httpLoginBox'):isChecked()
 
     if g_game.isOnline() then
-        local errorBox = displayErrorBox(tr('Login Error'), tr('Cannot login while already in game.'))
-        connect(errorBox, {
-            onOk = EnterGame.show
-        })
+        showLoginError(tr('Cannot login while already in game.'))
         return
     end
 
@@ -809,10 +855,7 @@ function EnterGame.doLogin()
                 return
             end
 
-            local errorBox = displayErrorBox(tr('Login Error'), message or tr('Unable to download client assets.'))
-            connect(errorBox, {
-                onOk = EnterGame.show
-            })
+            showLoginError(message or tr('Unable to download client assets.'))
         end)
         return
     end
@@ -851,10 +894,7 @@ function EnterGame.doLogin()
                 loadBox = nil
             end
 
-            local errorBox = displayErrorBox(tr("Login Error"), string.format("Things are not loaded, please put spr and dat in things/%d/<here>.", clientVersion))
-            connect(errorBox, {
-               onOk = EnterGame.show
-            })
+            showLoginError(string.format("Things are not loaded, please put spr and dat in things/%d/<here>.", clientVersion))
             return
         end
     end
@@ -870,11 +910,11 @@ function EnterGame.displayMotd()
 end
 
 function EnterGame.setDefaultServer(host, port, protocol)
-    local hostTextEdit = enterGame:getChildById('serverHostTextEdit')
-    local portTextEdit = enterGame:getChildById('serverPortTextEdit')
-    local clientLabel = enterGame:getChildById('clientLabel')
-    local accountTextEdit = enterGame:getChildById('accountNameTextEdit')
-    local passwordTextEdit = enterGame:getChildById('accountPasswordTextEdit')
+    local hostTextEdit = getEnterGameChild('serverHostTextEdit')
+    local portTextEdit = getEnterGameChild('serverPortTextEdit')
+    local clientLabel = getEnterGameChild('clientLabel')
+    local accountTextEdit = getEnterGameChild('accountNameTextEdit')
+    local passwordTextEdit = getEnterGameChild('accountPasswordTextEdit')
 
     if hostTextEdit:getText() ~= host then
         hostTextEdit:setText(host)
@@ -886,47 +926,56 @@ function EnterGame.setDefaultServer(host, port, protocol)
 end
 
 function EnterGame.setUniqueServer(host, port, protocol, windowWidth, windowHeight)
-    local hostTextEdit = enterGame:getChildById('serverHostTextEdit')
+    local hostTextEdit = getEnterGameChild('serverHostTextEdit')
     hostTextEdit:setText(host)
+    local portTextEdit = getEnterGameChild('serverPortTextEdit')
+    portTextEdit:setText(port)
+    local stayLoggedBox = getEnterGameChild('stayLoggedBox')
+    stayLoggedBox:setChecked(false)
+    stayLoggedBox:setOn(false)
+    local clientVersion = tonumber(protocol)
+    clientBox:setCurrentOption(clientVersion)
+
+    if isMobileV2() then
+        enterGame.disableToken = true
+        local server = Servers_init[host]
+        enterGame.disableToken = not (server and server.useAuthenticator)
+        g_game.setClientVersion(clientVersion)
+        g_game.setProtocolVersion(g_game.getClientProtocolVersion(clientVersion))
+        return
+    end
+
     hostTextEdit:setVisible(false)
     hostTextEdit:setHeight(0)
 
-    local portTextEdit = enterGame:getChildById('serverPortTextEdit')
-    portTextEdit:setText(port)
     portTextEdit:setVisible(false)
     portTextEdit:setHeight(0)
 
-    local stayLoggedBox = enterGame:getChildById('stayLoggedBox')
-    stayLoggedBox:setChecked(false)
-    stayLoggedBox:setOn(false)
-
-    local clientVersion = tonumber(protocol)
-    clientBox:setCurrentOption(clientVersion)
     clientBox:setVisible(false)
     clientBox:setHeight(0)
 
-    local serverLabel = enterGame:getChildById('serverLabel')
+    local serverLabel = getEnterGameChild('serverLabel')
     serverLabel:setVisible(false)
     serverLabel:setHeight(0)
 
-    local portLabel = enterGame:getChildById('portLabel')
+    local portLabel = getEnterGameChild('portLabel')
     portLabel:setVisible(false)
     portLabel:setHeight(0)
 
-    local clientLabel = enterGame:getChildById('clientLabel')
+    local clientLabel = getEnterGameChild('clientLabel')
     clientLabel:setVisible(false)
     clientLabel:setHeight(0)
 
-    local httpLoginBox = enterGame:getChildById('httpLoginBox')
+    local httpLoginBox = getEnterGameChild('httpLoginBox')
     httpLoginBox:setVisible(false)
     httpLoginBox:setHeight(0)
 
-    local serverListButton = enterGame:getChildById('serverListButton')
+    local serverListButton = getEnterGameChild('serverListButton')
     serverListButton:setVisible(false)
     serverListButton:setHeight(0)
     serverListButton:setWidth(0)
 
-    local rememberEmailBox = enterGame:getChildById('rememberEmailBox')
+    local rememberEmailBox = getEnterGameChild('rememberEmailBox')
     rememberEmailBox:setMarginTop(5)
 
     if not windowWidth then
@@ -951,8 +1000,16 @@ function EnterGame.setUniqueServer(host, port, protocol, windowWidth, windowHeig
 end
 
 function EnterGame.setServerInfo(message)
-    local label = enterGame:getChildById('serverInfoLabel')
+    local label = getEnterGameChild('serverInfoLabel')
     label:setText(message)
+end
+
+function EnterGame.toggleConnectionSettings()
+    if not isMobileV2() then return end
+    local panel = getEnterGameChild('connectionSettingsPanel')
+    local visible = not panel:isVisible()
+    panel:setVisible(visible)
+    getEnterGameChild('connectionSettingsButton'):setOn(visible)
 end
 
 function EnterGame.disableMotd()
@@ -1016,6 +1073,12 @@ function EnterGame.showAuthenticatorInput()
     local okCallback = function()
         local token = tokenEdit:getText()
         if not token or token:len() == 0 then
+            if isMobileV2() then
+              tokenWindow.content:setText(tr('Token is required.'))
+              tokenWindow.content:resizeToText()
+              tokenEdit:focus()
+              return
+            end
             if authErrorBox then
               authErrorBox:destroy()
             end
@@ -1035,13 +1098,13 @@ function EnterGame.showAuthenticatorInput()
         
         hasAttemptedAuthenticator = true
         
-        G.account = enterGame:getChildById('accountNameTextEdit'):getText()
-        G.password = enterGame:getChildById('accountPasswordTextEdit'):getText()
-        G.host = enterGame:getChildById('serverHostTextEdit'):getText()
-        G.port = tonumber(enterGame:getChildById('serverPortTextEdit'):getText())
+        G.account = getEnterGameChild('accountNameTextEdit'):getText()
+        G.password = getEnterGameChild('accountPasswordTextEdit'):getText()
+        G.host = getEnterGameChild('serverHostTextEdit'):getText()
+        G.port = tonumber(getEnterGameChild('serverPortTextEdit'):getText())
         G.authenticatorToken = token
         local clientVersion = tonumber(clientBox:getText())
-        local httpLogin = enterGame:getChildById('httpLoginBox'):isChecked()
+        local httpLogin = getEnterGameChild('httpLoginBox'):isChecked()
         
         if tokenWindow then
             tokenWindow:destroy()
@@ -1118,5 +1181,5 @@ function EnterGame.destroyToken()
 end
 
 function ensableBtnCreateNewAccount()
-    enterGame.btnCreateNewAccount:enable()
+    getEnterGameChild('btnCreateNewAccount'):enable()
 end

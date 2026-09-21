@@ -5,6 +5,10 @@ local defaultLocaleName = 'en'
 local installedLocales
 local currentLocale
 
+local function isMobileV2()
+    return modules.client_mobileui.isV2Enabled()
+end
+
 function sendLocale(localeName)
     local protocolGame = g_game.getProtocolGame()
     if protocolGame then
@@ -15,14 +19,26 @@ function sendLocale(localeName)
 end
 
 function createWindow()
-    localesWindow = g_ui.displayUI('locales')
-    local localesPanel = localesWindow:getChildById('localesPanel')
+    local mobileV2 = isMobileV2()
+    localesWindow = g_ui.displayUI(mobileV2 and 'locales-mobile' or 'locales')
+    local localesPanel = localesWindow:recursiveGetChildById('localesPanel')
     local layout = localesPanel:getLayout()
     local spacing = layout:getCellSpacing()
     local size = layout:getCellSize()
 
+    local localeNames = {}
+    for name in pairs(installedLocales) do
+        table.insert(localeNames, name)
+    end
+    table.sort(localeNames, function(left, right)
+        if left == defaultLocaleName then return true end
+        if right == defaultLocaleName then return false end
+        return left < right
+    end)
+
     local count = 0
-    for name, locale in pairs(installedLocales) do
+    for _, name in ipairs(localeNames) do
+        local locale = installedLocales[name]
         local widget = g_ui.createWidget('LocalesButton', localesPanel)
         widget:setImageSource('/images/flags/' .. name .. '')
         widget:setText(locale.languageName)
@@ -32,8 +48,15 @@ function createWindow()
         count = count + 1
     end
 
-    count = math.max(1, math.min(count, 3))
-    localesPanel:setWidth(size.width * count + spacing * (count - 1))
+    if mobileV2 then
+        local profile = modules.client_mobileui.getProfile()
+        local surface = localesWindow:recursiveGetChildById('localesSurface')
+        surface:setWidth(math.min(340, profile.usableWidth - 24))
+        surface:setHeight(math.min(316, profile.usableHeight - 24))
+    else
+        count = math.max(1, math.min(count, 3))
+        localesPanel:setWidth(size.width * count + spacing * (count - 1))
+    end
 
     addEvent(function()
         addEvent(function()

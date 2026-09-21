@@ -1,0 +1,80 @@
+LocalesButton < UIWidget
+  size: 144 56
+  background-color: #172333ee
+  border-width: 1
+  border-color: #7890a455
+  image-size: 44 44
+  image-offset: 8 6
+  image-smooth: true
+  text-align: left
+  text-offset: 60 0
+  font: verdana-11px-antialised
+  color: #e5edf5
+  change-cursor-image: true
+  cursor: pointer
+
+  $hover:
+    background-color: #22344aee
+    border-color: #92adc077
+
+  $pressed:
+    background-color: #0e1724ee
+    text-offset: 61 1
+
+UIWindow
+  id: mobileLocalesWindow
+  background-color: #070c13ee
+  clipping: true
+  anchors.fill: parent
+
+  MobileUISurface
+    id: localesSurface
+    size: 340 316
+    anchors.centerIn: parent
+    padding: 12
+
+    Label
+      id: localesHeader
+      !text: tr('Select your language')
+      font: cipsoftFont
+      color: #f4f7fa
+      text-align: center
+      anchors.top: parent.top
+      anchors.left: parent.left
+      anchors.right: parent.right
+      height: 40
+
+    Label
+      id: localesHint
+      !text: tr('Choose a language to continue')
+      font: verdana-11px-antialised
+      color: #8fa3b7
+      text-align: center
+      anchors.top: localesHeader.bottom
+      anchors.left: parent.left
+      anchors.right: parent.right
+      height: 20
+
+    UIScrollArea
+      id: localesPanel
+      width: 296
+      anchors.horizontalCenter: parent.horizontalCenter
+      anchors.top: localesHint.bottom
+      anchors.bottom: parent.bottom
+      margin-top: 4
+      vertical-scrollbar: localesScrollBar
+      clipping: true
+      layout:
+        type: grid
+        cell-size: 144 56
+        cell-spacing: 8
+        flow: true
+
+    VerticalScrollBar
+      id: localesScrollBar
+      anchors.top: localesPanel.top
+      anchors.bottom: localesPanel.bottom
+      anchors.left: localesPanel.right
+      margin-left: 4
+      step: 64
+      pixels-scroll: true
