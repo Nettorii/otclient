@@ -7,11 +7,18 @@ local function expectEqual(actual, expected, message)
 end
 
 function runSelfTests()
-  local compact = computeProfile(800, 390, 0, 0, 0, 0, 0)
+  local compact = computeProfile(800, 390, 0, 0, 0, 0, 0, 'standard')
   expectEqual(compact.class, 'compact', 'height 390 class')
   expectEqual(compact.target, 48, 'compact target')
   expectEqual(compact.joystick, 112, 'compact joystick')
   expectEqual(compact.hotbarSlots, 6, 'compact hotbar slots')
+  expectEqual(compact.handedness, 'standard', 'standard handedness')
+  expectEqual(computeProfile(800, 390, 0, 0, 0, 0, 0, 'mirrored').handedness,
+    'mirrored', 'mirrored handedness')
+  expectEqual(computeProfile(800, 390, 0, 0, 0, 0, 0, 'invalid').handedness,
+    'standard', 'invalid handedness fallback')
+  expectEqual(computeProfile(800, 390, 0, 0, 0, 0, 0).handedness,
+    'standard', 'missing handedness fallback')
 
   local comfortable = computeProfile(800, 391, 0, 0, 0, 0, 0)
   expectEqual(comfortable.class, 'comfortable', 'height 391 class')
@@ -45,7 +52,7 @@ function runSelfTests()
   expectEqual(fullyOccluded.usableWidth, 0, 'usable width floor')
   expectEqual(fullyOccluded.usableHeight, 0, 'usable height floor')
 
-  local metrics = { 800, 390, 0, 0, 0, 0, 0 }
+  local metrics = { 800, 390, 0, 0, 0, 0, 0, 'standard' }
   local boundRefresh
   local unboundRefresh
   local service = createProfileService(
@@ -70,11 +77,16 @@ function runSelfTests()
   boundRefresh()
   expectEqual(notifications, 1, 'changed profile notifies once')
   expectEqual(service.get().safe.left, 0, 'subscriber receives a fresh profile')
+  metrics[8] = 'mirrored'
+  boundRefresh()
+  expectEqual(notifications, 2, 'handedness change notifies once')
+  expectEqual(service.get().handedness, 'mirrored',
+    'profile service preserves mirrored handedness')
   unsubscribe()
   unsubscribe()
   metrics[2] = 600
   boundRefresh()
-  expectEqual(notifications, 1, 'unsubscribe closure is idempotent')
+  expectEqual(notifications, 2, 'unsubscribe closure is idempotent')
 
   local firstCycleCalls = 0
   local removedDuringCycleCalls = 0
@@ -131,7 +143,15 @@ local function classForHeight(height)
   return 'tablet'
 end
 
-computeProfile = function(width, height, safeLeft, safeTop, safeRight, safeBottom, keyboardHeight)
+local function sanitizeHandedness(handedness)
+  if handedness == 'mirrored' then
+    return 'mirrored'
+  end
+  return 'standard'
+end
+
+computeProfile = function(width, height, safeLeft, safeTop, safeRight, safeBottom,
+    keyboardHeight, handedness)
   width = nonNegative(width)
   height = nonNegative(height)
   safeLeft = nonNegative(safeLeft)
@@ -156,6 +176,7 @@ computeProfile = function(width, height, safeLeft, safeTop, safeRight, safeBotto
       bottom = safeBottom
     },
     keyboardHeight = keyboardHeight,
+    handedness = sanitizeHandedness(handedness),
     target = values.target,
     joystick = values.joystick,
     hotbarSlots = values.hotbarSlots,
@@ -175,6 +196,7 @@ local function copyProfile(profile)
       bottom = profile.safe.bottom
     },
     keyboardHeight = profile.keyboardHeight,
+    handedness = profile.handedness,
     target = profile.target,
     joystick = profile.joystick,
     hotbarSlots = profile.hotbarSlots,
@@ -192,6 +214,7 @@ local function profilesEqual(left, right)
     left.safe.right == right.safe.right and
     left.safe.bottom == right.safe.bottom and
     left.keyboardHeight == right.keyboardHeight and
+    left.handedness == right.handedness and
     left.target == right.target and
     left.joystick == right.joystick and
     left.hotbarSlots == right.hotbarSlots and
@@ -270,13 +293,18 @@ end
 
 local function readViewportMetrics()
   rootWidget = rootWidget or g_ui.getRootWidget()
+  local handedness = 'standard'
+  if g_settings and g_settings.getString then
+    handedness = g_settings.getString('mobileHandedness', 'standard')
+  end
   return rootWidget:getWidth(),
     rootWidget:getHeight(),
     getWindowMetric('getSafeAreaInsetLeft'),
     getWindowMetric('getSafeAreaInsetTop'),
     getWindowMetric('getSafeAreaInsetRight'),
     getWindowMetric('getSafeAreaInsetBottom'),
-    getWindowMetric('getKeyboardHeight')
+    getWindowMetric('getKeyboardHeight'),
+    handedness
 end
 
 local function bindViewportChanges(refresh)
@@ -307,6 +335,11 @@ function terminateProfile()
 end
 
 function refreshProfile()
+  if not profileService then initProfile() end
+  return profileService.refresh()
+end
+
+function refreshProfileSettings()
   if not profileService then initProfile() end
   return profileService.refresh()
 end

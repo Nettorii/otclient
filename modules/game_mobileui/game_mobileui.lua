@@ -8,6 +8,7 @@ local drawerHandle
 local unsubscribeProfile
 local layoutEvent
 local gameActive = false
+local controlsFit = false
 local foregroundOwner = {}
 
 local function nonNegative(value)
@@ -41,22 +42,7 @@ local function profileSpacing(profile)
   if profile.class == 'comfortable' then
     return 12, 8
   end
-  return 6, 4
-end
-
-local function sideRect(side, width, height, zone, bottom, hotbarRect, gap)
-  local x
-  if side == 'left' then
-    x = zone.x
-  else
-    x = zone.x + zone.width - width
-  end
-
-  local y = bottom - height
-  if width > zone.width then
-    y = math.min(y, hotbarRect.y - gap - height)
-  end
-  return rect(x, y, width, height)
+  return 4, 4
 end
 
 local function computeLayout(profile)
@@ -73,6 +59,29 @@ local function computeLayout(profile)
   local joystickSize = math.max(target, integer(profile.joystick))
   local slotCount = math.max(1, math.min(8, integer(profile.hotbarSlots)))
   local hotbarWidth = slotCount * target + (slotCount - 1) * gap
+  local actionSize = target * 2 + gap
+  local controlRowHeight = math.max(joystickSize, actionSize)
+  local minimumWidth = margin * 2 + hotbarWidth
+  local minimumHeight = margin * 2 + target * 2 +
+    controlRowHeight + gap * 2
+
+  -- Minimum envelopes derived from margin + top row + tallest control row +
+  -- hotbar, retaining the class target and gap without shrinking:
+  -- compact     316x224 = 4 + (6*48 + 5*4) + 4,
+  --                       4 + 48 + 4 + 112 + 4 + 48 + 4
+  -- comfortable 400x288 = 12 + (6*56 + 5*8) + 12,
+  --                       12 + 56 + 8 + 136 + 8 + 56 + 12
+  -- tablet      536x320 = 16 + (8*56 + 7*8) + 16,
+  --                       16 + 56 + 8 + 160 + 8 + 56 + 16
+  if usableWidth < minimumWidth or usableHeight < minimumHeight then
+    return {
+      controlsFit = false,
+      minimumWidth = minimumWidth,
+      minimumHeight = minimumHeight,
+      slotCount = slotCount
+    }
+  end
+
   local hotbarRect = rect(
     safeLeft + math.floor((usableWidth - hotbarWidth) / 2),
     usableBottom - margin - target,
@@ -81,25 +90,10 @@ local function computeLayout(profile)
 
   local leftEdge = safeLeft + margin
   local rightEdge = usableRight - margin
-  local leftZone = rect(
-    leftEdge,
-    safeTop + margin,
-    math.max(0, hotbarRect.x - gap - leftEdge),
-    math.max(0, usableHeight - margin * 2))
-  local rightZoneX = hotbarRect.x + hotbarRect.width + gap
-  local rightZone = rect(
-    rightZoneX,
-    safeTop + margin,
-    math.max(0, rightEdge - rightZoneX),
-    math.max(0, usableHeight - margin * 2))
-
-  local actionSize = target * 2 + gap
-  local controlBottom = usableBottom - margin
+  local controlBottom = hotbarRect.y - gap
   local mirrored = profile.handedness == 'mirrored'
-  local joystickZone = mirrored and rightZone or leftZone
-  local actionZone = mirrored and leftZone or rightZone
-  local joystickSide = mirrored and 'right' or 'left'
-  local actionSide = mirrored and 'left' or 'right'
+  local joystickX = mirrored and rightEdge - joystickSize or leftEdge
+  local actionsX = mirrored and leftEdge or rightEdge - actionSize
 
   local actionButtons = {}
   for index = 1, 4 do
@@ -126,28 +120,20 @@ local function computeLayout(profile)
     math.min(240, math.floor(usableWidth * 0.34)))
   local statusRect = rect(leftEdge, safeTop + margin, statusWidth, target)
   local menuRect = rect(rightEdge - target, safeTop + margin, target, target)
-  local joystickRect = sideRect(
-    joystickSide, joystickSize, joystickSize, joystickZone,
-    controlBottom, hotbarRect, gap)
-  local actionsRect = sideRect(
-    actionSide, actionSize, actionSize, actionZone,
-    controlBottom, hotbarRect, gap)
-  local rightControl = mirrored and joystickRect or actionsRect
-  local drawerY = menuRect.y + menuRect.height + gap
-  if drawerY + target > rightControl.y - gap then
-    local belowControl = rightControl.y + rightControl.height + gap
-    local latestDrawerY = usableBottom - margin - target
-    if belowControl <= latestDrawerY then
-      drawerY = belowControl
-    else
-      drawerY = math.max(
-        safeTop + margin,
-        math.min(latestDrawerY,
-          safeTop + math.floor((usableHeight - target) / 2)))
-    end
-  end
+  local joystickRect = rect(
+    joystickX, controlBottom - joystickSize, joystickSize, joystickSize)
+  local actionsRect = rect(
+    actionsX, controlBottom - actionSize, actionSize, actionSize)
+  local drawerRect = rect(
+    statusRect.x + statusRect.width + gap,
+    safeTop + margin,
+    target,
+    target)
 
   return {
+    controlsFit = true,
+    minimumWidth = minimumWidth,
+    minimumHeight = minimumHeight,
     target = target,
     slotCount = slotCount,
     status = statusRect,
@@ -155,7 +141,7 @@ local function computeLayout(profile)
     joystickHost = joystickRect,
     hotbar = hotbarRect,
     actions = actionsRect,
-    drawerHandle = rect(rightEdge - target, drawerY, target, target),
+    drawerHandle = drawerRect,
     actionButtons = actionButtons,
     hotbarSlots = hotbarSlots
   }
@@ -169,6 +155,13 @@ end
 
 local function applyComputedLayout(layout)
   if not hud or hud:isDestroyed() then
+    return
+  end
+
+  controlsFit = layout.controlsFit
+  hud.controlsFit = controlsFit
+  if not controlsFit then
+    setControlsVisible(false)
     return
   end
 
@@ -205,6 +198,8 @@ local function applyComputedLayout(layout)
       })
     end
   end
+
+  setControlsVisible(true)
 end
 
 function applyProfile(profile)
@@ -230,7 +225,8 @@ function setControlsVisible(visible)
     return false
   end
 
-  visible = visible == true and gameActive
+  visible = visible == true and gameActive and controlsFit
+  hud:setEnabled(visible)
   if hud:isVisible() ~= visible then
     hud:setVisible(visible)
   end
@@ -242,9 +238,12 @@ end
 
 local function acquireGameplayForeground()
   local mobileUi = modules.client_mobileui
-  local _, owner = mobileUi.getForeground()
-  if owner ~= nil then
-    return owner == foregroundOwner
+  local state, owner = mobileUi.getForeground()
+  if state == 'gameplay' and owner == foregroundOwner then
+    return true
+  end
+  if state ~= nil or owner ~= nil then
+    return false
   end
 
   if not mobileUi.setForeground('gameplay', foregroundOwner) then
@@ -291,6 +290,45 @@ local function onGameEnd()
 end
 
 function runSelfTests()
+  local function insideUsable(geometry, profile)
+    local left = profile.safe.left
+    local top = profile.safe.top
+    return geometry.x >= left and geometry.y >= top and
+      geometry.x + geometry.width <= left + profile.usableWidth and
+      geometry.y + geometry.height <= top + profile.usableHeight
+  end
+
+  local function assertVisibleLayout(profile)
+    local layout = computeLayout(profile)
+    assert(layout.controlsFit, 'gameplay controls must fit supported profile')
+    local direct = {
+      layout.status,
+      layout.menu,
+      layout.joystickHost,
+      layout.hotbar,
+      layout.actions,
+      layout.drawerHandle
+    }
+    for index, geometry in ipairs(direct) do
+      assert(insideUsable(geometry, profile),
+        'gameplay direct control must remain inside usable rect: ' .. index)
+      for otherIndex = index + 1, #direct do
+        assert(not intersects(geometry, direct[otherIndex]),
+          'gameplay direct controls must not overlap')
+      end
+    end
+    for index = 1, layout.slotCount do
+      local slot = layout.hotbarSlots[index]
+      assert(insideUsable(rect(
+        layout.hotbar.x + slot.x,
+        layout.hotbar.y + slot.y,
+        slot.width,
+        slot.height), profile),
+        'gameplay hotbar slot must remain inside usable rect')
+    end
+    return layout
+  end
+
   local profiles = {
     {
       class = 'compact', usableWidth = 800, usableHeight = 390,
@@ -310,7 +348,7 @@ function runSelfTests()
   }
 
   for _, profile in ipairs(profiles) do
-    local layout = computeLayout(profile)
+    local layout = assertVisibleLayout(profile)
     assert(layout.target >= 48, 'gameplay target must be at least 48')
     assert(layout.joystickHost.width == profile.joystick,
       'gameplay joystick size must follow profile')
@@ -322,9 +360,9 @@ function runSelfTests()
       'gameplay actions must not intersect hotbar')
   end
 
-  local standard = computeLayout(profiles[1])
+  local standard = assertVisibleLayout(profiles[1])
   profiles[1].handedness = 'mirrored'
-  local mirrored = computeLayout(profiles[1])
+  local mirrored = assertVisibleLayout(profiles[1])
   assert(mirrored.joystickHost.x > standard.joystickHost.x,
     'mirrored joystick must use right zone')
   assert(mirrored.actions.x < standard.actions.x,
@@ -333,6 +371,42 @@ function runSelfTests()
     'mirrored joystick must not intersect hotbar')
   assert(not intersects(mirrored.actions, mirrored.hotbar),
     'mirrored actions must not intersect hotbar')
+
+  local minimumCompact = {
+    class = 'compact', usableWidth = 316, usableHeight = 224,
+    safe = { left = 17, top = 11, right = 9, bottom = 7 },
+    target = 48, joystick = 112, hotbarSlots = 6,
+    handedness = 'standard'
+  }
+  local minimumLayout = assertVisibleLayout(minimumCompact)
+  assert(minimumLayout.minimumWidth == 316 and
+    minimumLayout.minimumHeight == 224,
+    'compact minimum envelope must remain 316x224')
+
+  minimumCompact.usableWidth = 406
+  assertVisibleLayout(minimumCompact)
+  minimumCompact.handedness = 'mirrored'
+  assertVisibleLayout(minimumCompact)
+
+  for _, emergency in ipairs({
+    { width = 315, height = 224 },
+    { width = 316, height = 223 },
+    { width = 300, height = 224 },
+    { width = 406, height = 200 }
+  }) do
+    local layout = computeLayout({
+      class = 'compact',
+      usableWidth = emergency.width,
+      usableHeight = emergency.height,
+      safe = { left = 13, top = 7, right = 5, bottom = 3 },
+      target = 48,
+      joystick = 112,
+      hotbarSlots = 6,
+      handedness = 'standard'
+    })
+    assert(not layout.controlsFit,
+      'undersized gameplay profile must use controlsFit fallback')
+  end
 
   g_logger.info('[mobile-ui-test] gameplay-layout PASS')
 end
@@ -353,6 +427,8 @@ function init()
   drawerHandle = hud:getChildById('drawerHandle')
 
   gameActive = false
+  controlsFit = false
+  hud.controlsFit = false
   setControlsVisible(false)
   applyProfile(mobileUi.getProfile())
   unsubscribeProfile = mobileUi.subscribeProfile(applyProfile)
@@ -391,4 +467,5 @@ function terminate()
   actions = nil
   drawerHandle = nil
   gameActive = false
+  controlsFit = false
 end
