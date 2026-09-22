@@ -5,6 +5,8 @@ local otmm = true
 local oldPos = nil
 local fullscreenWidget
 local drawerMinimapState = nil
+local drawerMinimapSessionActive = false
+local drawerMinimapSessionGeneration = 0
 local virtualFloor = 7
 local currentDayTime = {
     h = 12,
@@ -65,6 +67,7 @@ function createDrawerMinimap(parent)
 
     local source = desktopMinimap()
     widget.mobileDrawerSource = source
+    widget.mobileDrawerSessionGeneration = drawerMinimapSessionGeneration
     local baseAddFlag = widget.addFlag
     widget.addFlag = function(self, position, icon, description, temporary)
         self.mobileDrawerSyncing = true
@@ -127,11 +130,16 @@ function releaseDrawerMinimap(widget)
     if not widget or widget:isDestroyed() then
         return false
     end
-    drawerMinimapState = {
-        camera = copyPosition(widget:getCameraPosition()),
-        zoom = widget:getZoom()
-    }
+    if drawerMinimapSessionActive and
+        widget.mobileDrawerSessionGeneration ==
+            drawerMinimapSessionGeneration then
+        drawerMinimapState = {
+            camera = copyPosition(widget:getCameraPosition()),
+            zoom = widget:getZoom()
+        }
+    end
     widget.mobileDrawerDestroying = true
+    widget:destroy()
     return true
 end
 
@@ -265,6 +273,9 @@ function mapController:onInit()
 end
 
 function mapController:onGameStart()
+    drawerMinimapSessionGeneration = drawerMinimapSessionGeneration + 1
+    drawerMinimapSessionActive = true
+    drawerMinimapState = nil
     mapController:registerEvents(g_game, {
         onChangeWorldTime = onChangeWorldTime
     })
@@ -295,6 +306,8 @@ function mapController:onGameStart()
 end
 
 function mapController:onGameEnd()
+    drawerMinimapSessionActive = false
+    drawerMinimapState = nil
     -- Save Map
     if otmm then
         g_minimap.saveOtmm('/minimap.otmm')
@@ -303,10 +316,11 @@ function mapController:onGameEnd()
     end
 
     self.ui.minimapBorder.minimap:save()
-    drawerMinimapState = nil
 end
 
 function mapController:onTerminate()
+    drawerMinimapSessionActive = false
+    drawerMinimapSessionGeneration = drawerMinimapSessionGeneration + 1
     drawerMinimapState = nil
     if iconTopMenu then
         iconTopMenu:destroy()

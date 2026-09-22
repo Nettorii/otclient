@@ -3,6 +3,18 @@ MobileMinimapDrawer = {}
 local View = {}
 View.__index = View
 
+local CONTROL_SIZE = 48
+local MAP_HEIGHT = 222
+local SECTION_SPACING = 6
+local CONTROL_IDS = {
+  'minimapZoomOut',
+  'minimapCenter',
+  'minimapZoomIn',
+  'minimapFloorUp',
+  'minimapFloorValue',
+  'minimapFloorDown'
+}
+
 function View:_widget(id)
   return self.root and self.root:recursiveGetChildById(id) or nil
 end
@@ -56,6 +68,47 @@ function View:_isolateMapInput()
   self:_restoreFlagInput()
 end
 
+function View:_layoutControls(width)
+  width = math.floor(tonumber(width) or 0)
+  if width < CONTROL_SIZE then
+    return false
+  end
+  local controls = self:_widget('minimapControls')
+  if not controls then
+    return false
+  end
+  local columns = math.max(1, math.min(
+    #CONTROL_IDS, math.floor(width / CONTROL_SIZE)))
+  local rows = math.ceil(#CONTROL_IDS / columns)
+  local controlsHeight = rows * CONTROL_SIZE
+  if self.layoutWidth == width and
+      controls:getHeight() == controlsHeight then
+    return true
+  end
+  self.layoutWidth = width
+  controls:setWidth(width)
+  controls:setHeight(controlsHeight)
+  for index, id in ipairs(CONTROL_IDS) do
+    local control = self:_widget(id)
+    if control then
+      local offset = index - 1
+      control:setRect({
+        x = (offset % columns) * CONTROL_SIZE,
+        y = math.floor(offset / columns) * CONTROL_SIZE,
+        width = CONTROL_SIZE,
+        height = CONTROL_SIZE
+      })
+    end
+  end
+  local height = MAP_HEIGHT + SECTION_SPACING + controlsHeight
+  self.root:setHeight(height)
+  self.root:setVisible(true)
+  if self.holder then
+    self.holder:setHeight(height)
+  end
+  return true
+end
+
 function View:_configureControls()
   self:_widget('minimapZoomOut').onClick = function()
     return self.minimap.zoomDrawerMinimap(self.map, -1)
@@ -83,10 +136,36 @@ end
 function View:create(parent)
   self.holder = parent
   local content = parent:getParent()
-  parent:setWidth(content and content:getWidth() or parent:getWidth())
-  parent:setHeight(330)
+  local width = content and content:getWidth() or parent:getWidth()
+  parent:setWidth(width)
+  if width < CONTROL_SIZE then
+    parent:setHeight(0)
+    return nil
+  end
   self.root = g_ui.createWidget('MobileMinimapView', parent)
-  self.root:setWidth(parent:getWidth())
+  self.root:setWidth(width)
+  if not self:_layoutControls(width) then
+    self.root:destroy()
+    self.root = nil
+    parent:setHeight(0)
+    return nil
+  end
+  local previousGeometryChange = self.root.onGeometryChange
+  self.root.onGeometryChange = function(widget, ...)
+    if previousGeometryChange then
+      previousGeometryChange(widget, ...)
+    end
+    local nextWidth = widget:getWidth()
+    if nextWidth < CONTROL_SIZE then
+      self.layoutWidth = nil
+      widget:setVisible(false)
+      if self.holder then
+        self.holder:setHeight(0)
+      end
+      return
+    end
+    self:_layoutControls(nextWidth)
+  end
   self.map = self.minimap.createDrawerMinimap(
     self:_widget('mobileMinimapHost'))
   if not self.map then
@@ -131,6 +210,7 @@ function View:destroy()
   self.map = nil
   self.root = nil
   self.holder = nil
+  self.layoutWidth = nil
 end
 
 function MobileMinimapDrawer.createDescriptor(options)

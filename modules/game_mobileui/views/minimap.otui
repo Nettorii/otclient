@@ -25,7 +25,7 @@ MobileMinimapButton < UIButton
     border-color: #9fc0d699
 
 MobileMinimapView < Panel
-  height: 330
+  height: 324
   anchors.left: parent.left
   anchors.right: parent.right
   focusable: false
@@ -44,12 +44,9 @@ MobileMinimapView < Panel
     phantom: false
 
   Panel
-    id: minimapZoomControls
-    height: 48
+    id: minimapControls
+    height: 96
     phantom: false
-    layout:
-      type: horizontalBox
-      spacing: 6
 
     MobileMinimapButton
       id: minimapZoomOut
@@ -62,14 +59,6 @@ MobileMinimapView < Panel
     MobileMinimapButton
       id: minimapZoomIn
       text: Zoom +
-
-  Panel
-    id: minimapFloorControls
-    height: 48
-    phantom: false
-    layout:
-      type: horizontalBox
-      spacing: 6
 
     MobileMinimapButton
       id: minimapFloorUp

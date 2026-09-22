@@ -9,7 +9,7 @@ local skillObservers = {}
 local nextSkillObserverId = 0
 local skillRevision = 0
 local skillDispatching = false
-local pendingSkillChange = nil
+local skillDispatchState = nil
 local skillNotificationsMuted = false
 local skillsAvailable = g_game.isOnline() == true
 local knownSkillResources = {}
@@ -103,7 +103,13 @@ local function skillIsAvailable(id)
         return true
     end
     if id <= Skill.ManaLeechAmount then
-        return featureEnabled(GameAdditionalSkills)
+        if not featureEnabled(GameAdditionalSkills) then
+            return false
+        end
+        if id == Skill.LifeLeechAmount or id == Skill.ManaLeechAmount then
+            return featureEnabled(GameLeechAmount)
+        end
+        return true
     end
     if not featureEnabled(GameForgeSkillStats) then
         return false
@@ -180,7 +186,12 @@ function getSkillSnapshot()
     end)
     snapshot.stamina = metric(player, 'getStamina')
     if featureEnabled(GamePlayerRegenerationTime) then
-        snapshot.regeneration = metric(player, 'getRegenerationTime')
+        local regeneration = metric(player, 'getRegenerationTime')
+        if regeneration and
+            (type(regeneration.value) ~= 'number' or
+                regeneration.value >= 0) then
+            snapshot.regeneration = regeneration
+        end
     end
     if featureEnabled(GameOfflineTrainingTime) then
         snapshot.offlineTraining =
@@ -261,62 +272,111 @@ function subscribeSkills(callback)
     end
 end
 
+local function addChangedRows(pending, rows)
+    for _, row in ipairs(rows or {}) do
+        if not pending.rowSet[row] then
+            pending.rowSet[row] = true
+            pending.rows[#pending.rows + 1] = row
+        end
+    end
+end
+
+local function mergeSkillChange(pending, changeType, rows, detail, revision)
+    if pending.revision ~= nil and
+        (pending.type ~= changeType or pending.detail ~= detail) then
+        pending.type = 'batch'
+        pending.detail = nil
+    elseif pending.revision == nil then
+        pending.type = changeType
+        pending.detail = detail
+    end
+    pending.revision = revision
+    addChangedRows(pending, rows)
+end
+
+local function newPendingSkillChange(changeType, rows, detail, revision)
+    local pending = {
+        type = nil,
+        rows = {},
+        rowSet = {},
+        detail = nil,
+        revision = nil
+    }
+    mergeSkillChange(pending, changeType, rows, detail, revision)
+    return pending
+end
+
 local function notifySkills(changeType, rows, detail)
     if skillNotificationsMuted then
         return false
     end
     skillRevision = skillRevision + 1
-    pendingSkillChange = {
-        type = changeType,
-        rows = rows or {},
-        detail = detail,
-        revision = skillRevision
-    }
     if skillDispatching then
+        if skillDispatchState then
+            for _, observer in ipairs(skillDispatchState.observers) do
+                if skillObservers[observer.id] == observer.callback then
+                    mergeSkillChange(observer.pending, changeType, rows,
+                        detail, skillRevision)
+                end
+            end
+        end
         return true
     end
 
+    local observers = {}
+    for observerId, callback in pairs(skillObservers) do
+        observers[#observers + 1] = {
+            id = observerId,
+            callback = callback,
+            pending = newPendingSkillChange(
+                changeType, rows, detail, skillRevision)
+        }
+    end
+    table.sort(observers, function(left, right)
+        return left.id < right.id
+    end)
+    skillDispatchState = { observers = observers }
     skillDispatching = true
     local ok, dispatchError = pcall(function()
-        while pendingSkillChange do
-            local change = pendingSkillChange
-            pendingSkillChange = nil
-            local snapshot = getSkillSnapshot()
-            local observers = {}
-            for observerId, callback in pairs(skillObservers) do
-                observers[#observers + 1] = {
-                    id = observerId,
-                    callback = callback
-                }
-            end
-            table.sort(observers, function(left, right)
-                return left.id < right.id
-            end)
+        local hasPending = true
+        while hasPending do
+            hasPending = false
             for _, observer in ipairs(observers) do
                 if skillObservers[observer.id] == observer.callback then
-                    local rows = {}
-                    for index, row in ipairs(change.rows) do
-                        rows[index] = row
+                    local pending = observer.pending
+                    if #pending.rows > 0 then
+                        observer.pending = newPendingSkillChange(
+                            nil, {}, nil, nil)
+                        local callbackRows = {}
+                        for index, row in ipairs(pending.rows) do
+                            callbackRows[index] = row
+                        end
+                        local callbackOk, callbackError = pcall(
+                            observer.callback,
+                            cloneSkillSnapshot(getSkillSnapshot()), {
+                                type = pending.type,
+                                rows = callbackRows,
+                                detail = pending.detail,
+                                revision = pending.revision
+                            })
+                        if not callbackOk and g_logger and g_logger.error then
+                            g_logger.error(
+                                '[game_skills] skill observer failed: ' ..
+                                tostring(callbackError))
+                        end
                     end
-                    local callbackOk, callbackError = pcall(
-                        observer.callback,
-                        cloneSkillSnapshot(snapshot), {
-                            type = change.type,
-                            rows = rows,
-                            detail = change.detail,
-                            revision = change.revision
-                        })
-                    if not callbackOk and g_logger and g_logger.error then
-                        g_logger.error(
-                            '[game_skills] skill observer failed: ' ..
-                            tostring(callbackError))
-                    end
+                else
+                    observer.pending = newPendingSkillChange(
+                        nil, {}, nil, nil)
+                end
+                if #observer.pending.rows > 0 then
+                    hasPending = true
                 end
             end
         end
     end)
     skillDispatching = false
-    pendingSkillChange = nil
+    skillDispatchState = nil
     if not ok then
         error(dispatchError, 0)
     end
@@ -420,7 +480,7 @@ end
 
 function skillController:onTerminate()
     skillObservers = {}
-    pendingSkillChange = nil
+    skillDispatchState = nil
     skillDispatching = false
     Keybind.delete("Windows", "Show/hide skills windows")
     skillsWindow:destroy()
@@ -1326,6 +1386,9 @@ function toggle()
     end
 end
 
+local renderExperience
+local renderLevel
+
 function checkExpSpeed()
     local player = g_game.getLocalPlayer()
     if not player then
@@ -1351,8 +1414,7 @@ function checkExpSpeed()
         
         player.expSpeed = timeElapsed > 0 and (expGained / timeElapsed) or 0
         
-        onLevelChange(player, player:getLevel(), player:getLevelPercent())
-        onExperienceChange(player, player:getExperience())
+        renderExperience(player, player:getExperience())
     end
 end
 
@@ -1429,14 +1491,26 @@ local function getExperienceTooltip(localPlayer)
     return nil
 end
 
-function onExperienceChange(localPlayer, value)
+renderLevel = function(localPlayer, value, percent)
+    percent = localPlayer:getLevelPercent()
+    setSkillValue('level', comma_value(value))
+    local text = tr('You have %s percent to go', 100 - percent)
+    setSkillPercent('level', percent, text)
+end
+
+renderExperience = function(localPlayer, value)
     if not localPlayer then
         return
     end
     setSkillValue('experience', comma_value(value))
     setSkillTooltip('experience', getExperienceTooltip(localPlayer))
-    onLevelChange(localPlayer, localPlayer:getLevel(), localPlayer:getLevelPercent())
-    notifySkills('experience', { 'experience' })
+    renderLevel(localPlayer, localPlayer:getLevel(),
+        localPlayer:getLevelPercent())
+end
+
+function onExperienceChange(localPlayer, value)
+    renderExperience(localPlayer, value)
+    notifySkills('experience', { 'experience', 'level' })
 end
 
 function onLevelChange(localPlayer, value, percent)
@@ -1447,10 +1521,7 @@ function onLevelChange(localPlayer, value, percent)
     -- (0-10000) once GameLevelPercentU16 is enabled (protocol >= 1520), not the 0-100 the
     -- UI expects. getLevelPercent() normalizes it, so always use the getter: otherwise the
     -- bar renders full and the tooltip reads "-5500 percent to go" at high levels.
-    percent = localPlayer:getLevelPercent()
-    setSkillValue('level', comma_value(value))
-    local text = tr('You have %s percent to go', 100 - percent)
-    setSkillPercent('level', percent, text)
+    renderLevel(localPlayer, value, percent)
     notifySkills('level', { 'level' })
 end
 
@@ -1556,76 +1627,100 @@ function onOfflineTrainingChange(localPlayer, offlineTrainingTime)
 end
 
 function onRegenerationChange(localPlayer, regenerationTime)
-    if not g_game.getFeature(GamePlayerRegenerationTime) or regenerationTime < 0 then
+    if not g_game.getFeature(GamePlayerRegenerationTime) then
         return
     end
-    local hours = math.floor(regenerationTime / 3600)
-    local minutes = math.floor(regenerationTime / 60)
-    local seconds = regenerationTime % 60
-    if seconds < 10 then
-        seconds = '0' .. seconds
-    end
-    if minutes < 10 then
-        minutes = '0' .. minutes
-    end
-    if hours < 10 then
-        hours = '0' .. hours
-    end
-    local fmt = ""
-    local alert = 300
-    if g_game.getFeature(GameEnterGameShowAppearance) then
-        fmt = string.format("%02d:%02d:%02d", hours, minutes, seconds)
-        alert = 0
-    else
-        fmt = string.format("%02d:%02d", minutes, seconds)
-    end
-    setSkillValue('regenerationTime', fmt)
-    checkAlert('regenerationTime', regenerationTime, false, alert)
-    if g_game.getFeature(GameEnterGameShowAppearance) then
-        modules.game_interface.StatsBar.onHungryChange(regenerationTime, alert)
+    if regenerationTime >= 0 then
+        local hours = math.floor(regenerationTime / 3600)
+        local minutes = math.floor(regenerationTime / 60)
+        local seconds = regenerationTime % 60
+        if seconds < 10 then
+            seconds = '0' .. seconds
+        end
+        if minutes < 10 then
+            minutes = '0' .. minutes
+        end
+        if hours < 10 then
+            hours = '0' .. hours
+        end
+        local fmt = ""
+        local alert = 300
+        if g_game.getFeature(GameEnterGameShowAppearance) then
+            fmt = string.format("%02d:%02d:%02d", hours, minutes, seconds)
+            alert = 0
+        else
+            fmt = string.format("%02d:%02d", minutes, seconds)
+        end
+        setSkillValue('regenerationTime', fmt)
+        checkAlert('regenerationTime', regenerationTime, false, alert)
+        if g_game.getFeature(GameEnterGameShowAppearance) then
+            modules.game_interface.StatsBar.onHungryChange(
+                regenerationTime, alert)
+        end
     end
     notifySkills('regeneration', { 'regeneration' })
 end
 
-function onSpeedChange(localPlayer, speed)
-    setSkillValue('speed', comma_value(speed))
+local function renderBaseSpeed(localPlayer, baseSpeed)
+    setSkillBase('speed', localPlayer:getSpeed(), baseSpeed)
+end
 
-    onBaseSpeedChange(localPlayer, localPlayer:getBaseSpeed())
+local function renderSpeed(localPlayer, speed)
+    setSkillValue('speed', comma_value(speed))
+    renderBaseSpeed(localPlayer, localPlayer:getBaseSpeed())
+end
+
+function onSpeedChange(localPlayer, speed)
+    renderSpeed(localPlayer, speed)
     notifySkills('speed', { 'speed' })
 end
 
 function onBaseSpeedChange(localPlayer, baseSpeed)
-    setSkillBase('speed', localPlayer:getSpeed(), baseSpeed)
+    renderBaseSpeed(localPlayer, baseSpeed)
     notifySkills('baseSpeed', { 'speed' })
 end
 
-function onMagicLevelChange(localPlayer, magiclevel, percent)
+local function renderBaseMagicLevel(localPlayer, baseMagicLevel)
+    setSkillBase('magiclevel', localPlayer:getMagicLevel(), baseMagicLevel)
+end
+
+local function renderMagicLevel(localPlayer, magiclevel, percent)
     setSkillValue('magiclevel', magiclevel)
     setSkillPercent('magiclevel', percent, tr('You have %s percent to go', 100 - percent))
+    renderBaseMagicLevel(localPlayer, localPlayer:getBaseMagicLevel())
+end
 
-    onBaseMagicLevelChange(localPlayer, localPlayer:getBaseMagicLevel())
+function onMagicLevelChange(localPlayer, magiclevel, percent)
+    renderMagicLevel(localPlayer, magiclevel, percent)
     notifySkills('magic', { 'magic' })
 end
 
 function onBaseMagicLevelChange(localPlayer, baseMagicLevel)
-    setSkillBase('magiclevel', localPlayer:getMagicLevel(), baseMagicLevel)
+    renderBaseMagicLevel(localPlayer, baseMagicLevel)
     notifySkills('baseMagic', { 'magic' })
 end
 
-function onSkillChange(localPlayer, id, level, percent)
+local function renderBaseSkill(localPlayer, id, baseLevel)
+    setSkillBase('skillId' .. id, localPlayer:getSkillLevel(id), baseLevel)
+end
+
+local function renderSkill(localPlayer, id, level, percent)
     setSkillValue('skillId' .. id, level)
     setSkillPercent('skillId' .. id, percent, tr('You have %s percent to go', 100 - percent))
-
-    onBaseSkillChange(localPlayer, id, localPlayer:getSkillBaseLevel(id))
+    renderBaseSkill(localPlayer, id, localPlayer:getSkillBaseLevel(id))
 
     if id > Skill.ManaLeechAmount then
 	    toggleSkill('skillId' .. id, level > 0)
     end
+end
+
+function onSkillChange(localPlayer, id, level, percent)
+    renderSkill(localPlayer, id, level, percent)
     notifySkills('skill', { 'skill:' .. tostring(id) }, id)
 end
 
 function onBaseSkillChange(localPlayer, id, baseLevel)
-    setSkillBase('skillId' .. id, localPlayer:getSkillLevel(id), baseLevel)
+    renderBaseSkill(localPlayer, id, baseLevel)
     notifySkills('baseSkill', { 'skill:' .. tostring(id) }, id)
 end
 
