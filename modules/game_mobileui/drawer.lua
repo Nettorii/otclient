@@ -531,9 +531,8 @@ function Host:_renderNavigation()
       button:setImageSource(entry.descriptor.icon)
     end
     button:setEnabled(true)
-    if type(self.mobileUi.applyOverlaySurface) == 'function' then
-      self.mobileUi.applyOverlaySurface(
-        button, '#101c29', self.getProfile())
+    if type(self.mobileUi.applyOverlayTree) == 'function' then
+      self.mobileUi.applyOverlayTree(button, self.getProfile())
     end
     button.onClick = function()
       local currentOwner = self.navigationOwners[button]
@@ -557,19 +556,10 @@ function Host:_renderNavigation()
 end
 
 function Host:_applyOverlay(profile)
-  local apply = self.mobileUi.applyOverlaySurface
-  if type(apply) ~= 'function' then
+  if type(self.mobileUi.applyOverlayTree) ~= 'function' then
     return
   end
-  apply(self.backdrop, '#02060a', profile)
-  apply(self.surface, '#0b131e', profile)
-  if self.surface then
-    apply(self.surface:recursiveGetChildById('drawerHeader'), '#152333', profile)
-  end
-  apply(self.navigation, '#101c29', profile)
-  for _, button in ipairs(self.navigationButtons) do
-    apply(button, '#101c29', profile)
-  end
+  self.mobileUi.applyOverlayTree(self.backdrop, profile)
 end
 
 function Host:_applyGeometry(profile)
@@ -1050,6 +1040,9 @@ function Host:open(id)
   if not self:_openingIsCurrent(record, transition) then
     self:_requestCleanup(record)
     return false
+  end
+  if type(self.mobileUi.applyOverlayTree) == 'function' then
+    self.mobileUi.applyOverlayTree(holder, self.getProfile())
   end
 
   self.pending = nil

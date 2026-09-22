@@ -71,27 +71,6 @@ function View:_widget(id)
   return self.root and self.root:recursiveGetChildById(id) or nil
 end
 
-function View:_applySurface(widget, profile)
-  if self.mobileUi and type(self.mobileUi.applyOverlaySurface) == 'function' then
-    self.mobileUi.applyOverlaySurface(widget, '#101c29', profile)
-  end
-end
-
-function View:_applyOverlay(profile)
-  for _, id in ipairs({
-    'mobileControlPreset',
-    'mobileHandedness',
-    'mobileOverlayOpacity',
-    'mobileSettingsReset',
-    'settingsGraphics',
-    'settingsAudio',
-    'settingsInterface',
-    'settingsGameplay'
-  }) do
-    self:_applySurface(self:_widget(id), profile)
-  end
-end
-
 function View:_renderMobileValues(profile)
   profile = profile or self.mobileUi.getProfile()
   local presetValue = self:_widget('mobileControlPresetValue')
@@ -106,7 +85,6 @@ function View:_renderMobileValues(profile)
   if opacityValue then
     opacityValue:setText(displayOpacity(profile.overlayOpacity))
   end
-  self:_applyOverlay(profile)
 end
 
 function View:_setOption(key, value)
@@ -161,6 +139,14 @@ function View:_closeOwnedModal()
   elseif session.body and not session.body:isDestroyed() then
     session.body:destroy()
   end
+  session.handle = nil
+  session.body = nil
+end
+
+local function consumeModalGesture(session)
+  local handle = session and session.handle
+  return handle and type(handle.consumeBodyGesture) == 'function' and
+    handle:consumeBodyGesture() == true
 end
 
 function View:_showCategory(categoryId)
@@ -179,16 +165,16 @@ function View:_showCategory(categoryId)
     generation = generation
   }
   self.modalSession = session
-  local profile = self.mobileUi.getProfile()
-
   for index, definition in ipairs(category.options) do
     local row = g_ui.createWidget('MobileSettingsOptionRow', body)
     row:setId('mobileOption_' .. definition.key)
     row:getChildById('name'):setText(tr(definition.text))
     local value = self.options.getOption(definition.key)
     row:getChildById('value'):setText(displayBoolean(value))
-    self:_applySurface(row, profile)
     row.onClick = function()
+      if consumeModalGesture(session) then
+        return true
+      end
       if self.modalSession ~= session or
           self.modalGeneration ~= generation then
         return true
@@ -206,8 +192,10 @@ function View:_showCategory(categoryId)
   local close = g_ui.createWidget('MobileSettingsModalClose', body)
   close:setId('mobileSettingsModalClose')
   close:setText(tr('Close'))
-  self:_applySurface(close, profile)
   close.onClick = function()
+    if consumeModalGesture(session) then
+      return true
+    end
     if self.modalSession == session and
         self.modalGeneration == generation then
       self:_closeOwnedModal()
@@ -230,6 +218,8 @@ function View:_showCategory(categoryId)
       if self.modalSession == session then
         self.modalSession = nil
       end
+      session.handle = nil
+      session.body = nil
     end
   })
   session.handle = handle

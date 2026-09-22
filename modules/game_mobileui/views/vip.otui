@@ -2,6 +2,7 @@ MobileVipControl < UIButton
   min-width: 56
   height: 56
   background-color: #101c29ee
+  mobile-overlay-base: #101c29
   border-width: 1
   border-color: #7891a455
   color: #dbe6ee
@@ -11,12 +12,13 @@ MobileVipControl < UIButton
   phantom: false
 
   $pressed:
-    background-color: #203a51ee
+    border-color: #9fc0d699
 
 MobileVipAction < UIButton
   height: 56
   min-height: 56
   background-color: #101c29ee
+  mobile-overlay-base: #101c29
   border-width: 1
   border-color: #7891a455
   color: #dbe6ee
@@ -26,7 +28,7 @@ MobileVipAction < UIButton
   phantom: false
 
   $pressed:
-    background-color: #203a51ee
+    border-color: #9fc0d699
 
 MobileVipActionSheet < Panel
   height: 56
@@ -51,6 +53,7 @@ MobileVipFormTextEdit < TextQtEdit
   height: 56
   min-height: 56
   background-color: #09111bee
+  mobile-overlay-base: #09111b
   border-width: 1
   border-color: #7891a477
   color: #f0f4f7
@@ -68,13 +71,14 @@ MobileVipRow < UIButton
   height: 56
   min-height: 56
   background-color: #101c29dd
+  mobile-overlay-base: #101c29
   border-width-bottom: 1
   border-color-bottom: #7891a455
   focusable: false
   phantom: false
 
   $pressed:
-    background-color: #203a51ee
+    border-color: #9fc0d699
 
   Label
     id: state
@@ -136,6 +140,7 @@ MobileVipGroup < Panel
     height: 56
     min-height: 56
     background-color: #172635ee
+    mobile-overlay-base: #172635
     border-width-bottom: 1
     border-color-bottom: #7891a466
     focusable: false

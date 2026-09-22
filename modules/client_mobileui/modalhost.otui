@@ -2,16 +2,19 @@ MobileModalButton < QtButton
   height: 48
   min-width: 48
   font: verdana-11px-antialised
+  mobile-overlay-base: #101c29
 
 MobileModalBackdrop < Panel
   anchors.fill: parent
   background-color: #02060acc
+  mobile-overlay-base: #02060a
   focusable: true
   phantom: false
 
   MobileUISurface
     id: modalSurface
     background-color: #0b131eee
+    mobile-overlay-base: #0b131e
     border-width: 1
     border-color: #7891a477
     clipping: true
@@ -23,6 +26,7 @@ MobileModalBackdrop < Panel
       anchors.top: parent.top
       height: 48
       background-color: #152333ee
+      mobile-overlay-base: #152333
       border-width-bottom: 1
       border-color-bottom: #7891a466
 
@@ -70,6 +74,7 @@ MobileModalBackdrop < Panel
       padding-left: 8
       padding-right: 8
       background-color: #101c29ee
+      mobile-overlay-base: #101c29
       border-width-top: 1
       border-color-top: #7891a455
       clipping: true

@@ -342,14 +342,7 @@ function showModal(config)
   handle.footerScrollBar = footerScrollBar
 
   local function applyOverlayProfile(profile)
-    applyOverlaySurface(backdrop, '#02060a', profile)
-    applyOverlaySurface(surface, '#0b131e', profile)
-    applyOverlaySurface(
-      surface:recursiveGetChildById('modalHeader'), '#152333', profile)
-    applyOverlaySurface(footer, '#101c29', profile)
-    for _, button in ipairs(buttons) do
-      applyOverlaySurface(button, '#101c29', profile)
-    end
+    applyOverlayTree(backdrop, profile)
   end
 
   local function updateButtonWidths()
@@ -457,6 +450,7 @@ function showModal(config)
     widget:setParent(bodyArea)
     widget:setWidth(math.max(0, bodyArea:getWidth() - 8))
     bindWidgetTree(bodyScroller, bodyArea)
+    applyOverlayTree(widget, getProfile())
     return true
   end
 
@@ -521,7 +515,7 @@ function showModal(config)
     end
     footerScroller.bind(button)
     table.insert(buttons, button)
-    applyOverlaySurface(button, '#101c29', getProfile())
+    applyOverlayTree(button, getProfile())
   end
   footerScroller.bind(footer)
   updateButtonWidths()

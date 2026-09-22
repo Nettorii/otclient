@@ -207,6 +207,28 @@ function applyOverlaySurface(widget, baseColor, profileOrOpacity)
   return true
 end
 
+function applyOverlayTree(root, profileOrOpacity)
+  if not root or root:isDestroyed() then
+    return false
+  end
+
+  local applied = false
+  if type(root.getStyle) == 'function' then
+    local style = root:getStyle()
+    local baseColor = style and style['mobile-overlay-base']
+    if baseColor then
+      applied = applyOverlaySurface(root, baseColor, profileOrOpacity) or applied
+    end
+  end
+
+  if type(root.getChildren) == 'function' then
+    for _, child in ipairs(root:getChildren()) do
+      applied = applyOverlayTree(child, profileOrOpacity) or applied
+    end
+  end
+  return applied
+end
+
 local function controlClassFor(viewportClass, preset)
   if preset == 'compact' then
     return 'compact'
@@ -384,7 +406,9 @@ end
 
 local function readMobileOption(key, defaultValue, settingGetter)
   local clientOptions = modules and modules.client_options
-  if clientOptions and type(clientOptions.getOption) == 'function' then
+  local optionsReady = clientOptions and
+    type(clientOptions.isReady) == 'function' and clientOptions.isReady()
+  if optionsReady and type(clientOptions.getOption) == 'function' then
     local value = clientOptions.getOption(key)
     if value ~= nil then
       return value

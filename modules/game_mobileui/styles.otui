@@ -1,5 +1,6 @@
 MobileHudSurface < Panel
   background-color: #08121dcc
+  mobile-overlay-base: #08121d
   border-width: 1
   border-color: #7891a455
   focusable: false
@@ -7,6 +8,7 @@ MobileHudSurface < Panel
 MobileHudTarget < UIButton
   size: 48 48
   background-color: #0b1623dd
+  mobile-overlay-base: #0b1623
   border-width: 1
   border-color: #7891a466
   color: #e5edf4
@@ -15,14 +17,13 @@ MobileHudTarget < UIButton
   focusable: false
   phantom: false
   $hover:
-    background-color: #132438e6
     border-color: #8fa9ba88
   $pressed:
-    background-color: #1b344bec
     border-color: #9fc0d699
 
 MobileHotbarSlot < MobileHudTarget
   background-color: #0a1420d9
+  mobile-overlay-base: #0a1420
   color: #aebdca
   font: verdana-11px-rounded
   image-source: /images/game/actionbar/actionbarslot
@@ -62,6 +63,7 @@ MobileHotbarSlot < MobileHudTarget
 MobileHudStatusBar < UIProgressBar
   height: 7
   background-color: #02060acc
+  mobile-overlay-base: #02060a
   border-width: 1
   border-color: #7891a444
   phantom: true

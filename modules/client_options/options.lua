@@ -1,4 +1,17 @@
 local options = dofile("data_options")
+local MOBILE_OPTION_KEYS = {
+    'mobileControlPreset',
+    'mobileHandedness',
+    'mobileOverlayOpacity'
+}
+local mobileOptionKeySet = {
+    mobileControlPreset = true,
+    mobileHandedness = true,
+    mobileOverlayOpacity = true
+}
+local initializing = false
+local ready = false
+
 panels = {
     generalPanel = nil,
     graphicsPanel = nil,
@@ -109,6 +122,63 @@ local function toggleOption(key)
     setOption(key, not getOption(key))
 end
 
+function isInitializing()
+    return initializing
+end
+
+function isReady()
+    return ready
+end
+
+local function isMobileV2()
+    local mobileUi = modules and modules.client_mobileui
+    return g_platform.isMobile() and mobileUi and
+        type(mobileUi.isV2Enabled) == 'function' and mobileUi.isV2Enabled()
+end
+
+local function readPersistedOption(key, option)
+    local valueType = type(option.value)
+    if valueType == 'boolean' then
+        return g_settings.getBoolean(key)
+    elseif valueType == 'number' then
+        return g_settings.getNumber(key)
+    elseif valueType == 'string' then
+        return g_settings.getString(key)
+    end
+    return option.value
+end
+
+local function validatePersistedMobileSettings()
+    if not isMobileV2() then
+        return
+    end
+    local corrected = false
+    for _, key in ipairs(MOBILE_OPTION_KEYS) do
+        local option = options[key]
+        local value = readPersistedOption(key, option)
+        local normalized = option.validate(value, true)
+        if normalized ~= value then
+            g_settings.set(key, normalized)
+            corrected = true
+        end
+        option.value = normalized
+    end
+    if corrected then
+        g_settings.save()
+    end
+end
+
+local function finishInitialization()
+    initializing = false
+    ready = true
+    if isMobileV2() then
+        local mobileUi = modules.client_mobileui
+        if type(mobileUi.refreshProfileSettings) == 'function' then
+            mobileUi.refreshProfileSettings()
+        end
+    end
+end
+
 local function setupComboBox()
     local crosshairCombo = panels.interface:recursiveGetChildById('crosshair')
     local antialiasingModeCombobox = panels.graphicsPanel:recursiveGetChildById('antialiasingMode')
@@ -196,17 +266,26 @@ local function setup()
 
     setupComboBox()
 
-    -- load options
+    -- Load mobile profile inputs first in a stable order. Their actions are
+    -- suppressed while initialization is active and published once below.
+    if isMobileV2() then
+        for _, key in ipairs(MOBILE_OPTION_KEYS) do
+            local obj = options[key]
+            setOption(key, readPersistedOption(key, obj), true, true)
+        end
+    end
+
+    -- Preserve the existing startup behavior for all non-mobile options.
     for k, obj in pairs(options) do
         local v = obj.value
 
-        if type(v) == 'boolean' then
+        if not mobileOptionKeySet[k] and type(v) == 'boolean' then
             local value = g_settings.getBoolean(k)
             setOption(k, value, true, true)
-        elseif type(v) == 'number' then
+        elseif not mobileOptionKeySet[k] and type(v) == 'number' then
             local value = g_settings.getNumber(k)
             setOption(k, value, true, true)
-        elseif type(v) == 'string' then
+        elseif not mobileOptionKeySet[k] and type(v) == 'string' then
             local value = g_settings.getString(k)
             setOption(k, value, true, true)
         end
@@ -229,6 +308,8 @@ local function setup()
             setOption('mouseControlMode', 0, true)
         end
     end
+
+    finishInitialization()
     
     -- Schedule combobox updates to ensure they happen after UI setup is complete
     scheduleEvent(function()
@@ -279,6 +360,8 @@ controller = Controller:new()
 controller:setUI('options')
 
 function controller:onInit()
+    initializing = true
+    ready = false
     for k, obj in pairs(options) do
         if type(obj) ~= "table" then
             obj = { value = obj }
@@ -286,6 +369,7 @@ function controller:onInit()
         end
         g_settings.setDefault(k, obj.value)
     end
+    validatePersistedMobileSettings()
 
     extraWidgets.audioButton = modules.client_topmenu.addTopRightToggleButton('audioButton', tr('Audio'),
         '/images/topbuttons/button_mute_up', function() toggleOption('enableAudio') end)
@@ -379,6 +463,8 @@ end
 function controller:onTerminate()
     -- Make sure all settings are saved before terminating
     g_settings.save()
+    initializing = false
+    ready = false
     
     -- Disconnect from app exit
     disconnect(g_app, { onExit = onAppExit })

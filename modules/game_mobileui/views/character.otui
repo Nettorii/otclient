@@ -21,6 +21,7 @@ MobileCharacterRow < Panel
   height: 48
   min-height: 48
   background-color: #101c29aa
+  mobile-overlay-base: #101c29
   border-width-bottom: 1
   border-color-bottom: #7891a444
   phantom: true

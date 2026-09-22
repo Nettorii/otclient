@@ -3,6 +3,7 @@ MobileContainerTab < UIButton
   min-width: 48
   height: 48
   background-color: #101c29ee
+  mobile-overlay-base: #101c29
   border-width: 1
   border-color: #7891a455
   color: #dbe6ee
@@ -13,13 +14,13 @@ MobileContainerTab < UIButton
   phantom: false
 
   $on:
-    background-color: #284863ee
     border-color: #a8c8dcaa
 
 MobileContainerAction < UIButton
   min-width: 48
   height: 48
   background-color: #101c29ee
+  mobile-overlay-base: #101c29
   border-width: 1
   border-color: #7891a455
   color: #dbe6ee
@@ -29,7 +30,7 @@ MobileContainerAction < UIButton
   phantom: false
 
   $pressed:
-    background-color: #203a51ee
+    border-color: #9fc0d699
 
 MobileContainerItem < UIItem
   size: 48 48

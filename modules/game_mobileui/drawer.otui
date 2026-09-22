@@ -3,6 +3,7 @@ MobileDrawerNavigationButton < UIButton
   height: 48
   min-width: 48
   background-color: #101c29ee
+  mobile-overlay-base: #101c29
   border-width: 1
   border-color: #7891a455
   color: #dbe6ee
@@ -11,13 +12,10 @@ MobileDrawerNavigationButton < UIButton
   focusable: false
   phantom: false
   $hover:
-    background-color: #17283aee
     border-color: #8fa9ba88
   $pressed:
-    background-color: #203a51ee
     border-color: #9fc0d699
   $disabled:
-    background-color: #203a51ee
     border-color: #9fc0d699
     color: #ffffff
 
@@ -30,12 +28,14 @@ MobileDrawerBackdrop < Panel
   id: drawerBackdrop
   anchors.fill: parent
   background-color: #02060aaa
+  mobile-overlay-base: #02060a
   focusable: true
   phantom: false
 
   Panel
     id: drawerSurface
     background-color: #0b131ef5
+    mobile-overlay-base: #0b131e
     border-width: 1
     border-color: #7891a477
     clipping: true
@@ -49,6 +49,7 @@ MobileDrawerBackdrop < Panel
       anchors.top: parent.top
       height: 48
       background-color: #152333f5
+      mobile-overlay-base: #152333
       border-width-bottom: 1
       border-color-bottom: #7891a466
       phantom: false
@@ -99,6 +100,7 @@ MobileDrawerBackdrop < Panel
       padding-left: 4
       padding-right: 4
       background-color: #101c29f5
+      mobile-overlay-base: #101c29
       border-width-top: 1
       border-color-top: #7891a455
       horizontal-scrollbar: drawerNavigationScrollBar

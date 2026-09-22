@@ -68,6 +68,7 @@ UIWidget
       margin-top: 18
       percent: 100
       background-color: #641f29dd
+      mobile-overlay-base: #641f29
 
     Label
       id: healthValue
@@ -101,6 +102,7 @@ UIWidget
       margin-bottom: 5
       percent: 100
       background-color: #245477dd
+      mobile-overlay-base: #245477
 
     Label
       id: manaValue
@@ -131,6 +133,7 @@ UIWidget
   MobileHudSurface
     id: joystickHost
     background-color: #0b162370
+    mobile-overlay-base: #0b1623
     border-color: #8fa9ba44
     phantom: true
 

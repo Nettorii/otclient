@@ -8,6 +8,7 @@ MobileMinimapButton < UIButton
   min-width: 48
   height: 48
   background-color: #101c29ee
+  mobile-overlay-base: #101c29
   border-width: 1
   border-color: #7891a455
   color: #dbe6ee
@@ -17,11 +18,9 @@ MobileMinimapButton < UIButton
   phantom: false
 
   $hover:
-    background-color: #17283aee
     border-color: #8fa9ba88
 
   $pressed:
-    background-color: #203a51ee
     border-color: #9fc0d699
 
 MobileMinimapView < Panel

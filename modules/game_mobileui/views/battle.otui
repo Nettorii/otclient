@@ -2,6 +2,7 @@ MobileBattleControl < UIButton
   min-width: 56
   height: 56
   background-color: #101c29ee
+  mobile-overlay-base: #101c29
   border-width: 1
   border-color: #7891a455
   color: #dbe6ee
@@ -11,12 +12,13 @@ MobileBattleControl < UIButton
   phantom: false
 
   $pressed:
-    background-color: #203a51ee
+    border-color: #9fc0d699
 
 MobileBattleAction < UIButton
   height: 56
   min-height: 56
   background-color: #101c29ee
+  mobile-overlay-base: #101c29
   border-width: 1
   border-color: #7891a455
   color: #dbe6ee
@@ -26,7 +28,7 @@ MobileBattleAction < UIButton
   phantom: false
 
   $pressed:
-    background-color: #203a51ee
+    border-color: #9fc0d699
 
 MobileBattleActionSheet < Panel
   height: 56
@@ -39,18 +41,18 @@ MobileBattleRow < UIButton
   height: 56
   min-height: 56
   background-color: #101c29dd
+  mobile-overlay-base: #101c29
   border-width-bottom: 1
   border-color-bottom: #7891a455
   focusable: false
   phantom: false
 
   $on:
-    background-color: #49302aee
     border-width: 1
     border-color: #e68a62cc
 
   $pressed:
-    background-color: #203a51ee
+    border-color: #9fc0d699
 
   Label
     id: type

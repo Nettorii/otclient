@@ -6,9 +6,15 @@ local MOBILE_OPACITY_MAX = 1.0
 
 local function publishMobileProfile()
     local mobileUi = modules and modules.client_mobileui
-    if mobileUi and mobileUi.refreshProfileSettings then
-        mobileUi.refreshProfileSettings()
-    end
+    local clientOptions = modules and modules.client_options
+    local initializing = clientOptions and clientOptions.isInitializing and
+        clientOptions.isInitializing() or
+        type(isInitializing) == 'function' and isInitializing()
+    if initializing or not g_platform.isMobile() or not mobileUi or
+        type(mobileUi.isV2Enabled) ~= 'function' or
+        not mobileUi.isV2Enabled() or
+        type(mobileUi.refreshProfileSettings) ~= 'function' then return end
+    mobileUi.refreshProfileSettings()
 end
 
 local function validateMobilePreset(value)

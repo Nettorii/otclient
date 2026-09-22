@@ -1,4 +1,5 @@
 MobileUISurface < Panel
   background-color: #111927dd
+  mobile-overlay-base: #111927
   border-width: 1
   border-color: #7b96a455
