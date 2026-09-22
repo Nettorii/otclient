@@ -5,6 +5,330 @@ skillsButton = nil
 skillsSettings = nil
 local ExpRating = {}
 local smallSkillsCache = {}
+local skillObservers = {}
+local nextSkillObserverId = 0
+local skillRevision = 0
+local skillDispatching = false
+local pendingSkillChange = nil
+local skillNotificationsMuted = false
+local skillsAvailable = g_game.isOnline() == true
+local knownSkillResources = {}
+
+local SKILL_DEFINITIONS = {
+    { id = 0, key = 'fist', name = 'Fist Fighting' },
+    { id = 1, key = 'club', name = 'Club Fighting' },
+    { id = 2, key = 'sword', name = 'Sword Fighting' },
+    { id = 3, key = 'axe', name = 'Axe Fighting' },
+    { id = 4, key = 'distance', name = 'Distance Fighting' },
+    { id = 5, key = 'shielding', name = 'Shielding' },
+    { id = 6, key = 'fishing', name = 'Fishing' },
+    { id = 7, key = 'criticalChance', name = 'Critical Hit Chance' },
+    { id = 8, key = 'criticalDamage', name = 'Critical Extra Damage' },
+    { id = 9, key = 'lifeLeechChance', name = 'Life Leech Chance' },
+    { id = 10, key = 'lifeLeechAmount', name = 'Life Leech Amount' },
+    { id = 11, key = 'manaLeechChance', name = 'Mana Leech Chance' },
+    { id = 12, key = 'manaLeechAmount', name = 'Mana Leech Amount' },
+    { id = 13, key = 'fatal', name = 'Fatal' },
+    { id = 14, key = 'dodge', name = 'Dodge' },
+    { id = 15, key = 'momentum', name = 'Momentum' },
+    { id = 16, key = 'transcendence', name = 'Transcendence' }
+}
+
+local RESOURCE_DEFINITIONS = {
+    { key = 'BANK_BALANCE', name = 'Bank Balance' },
+    { key = 'GOLD_EQUIPPED', name = 'Inventory Gold' },
+    { key = 'NPC_TRADE', name = 'NPC Trade Balance' },
+    { key = 'PREY_WILDCARDS', name = 'Prey Wildcards' },
+    { key = 'DAILYREWARD_STREAK', name = 'Reward Streak' },
+    { key = 'DAILYREWARD_JOKERS', name = 'Reward Jokers' },
+    { key = 'CHARM', name = 'Charm Points' },
+    { key = 'MINOR_CHARM', name = 'Minor Charm Points' },
+    { key = 'MAX_CHARM', name = 'Maximum Charm Points' },
+    { key = 'MAX_MINOR_CHARM', name = 'Maximum Minor Charm Points' },
+    { key = 'TASK_HUNTING', name = 'Hunting Task Points' },
+    { key = 'NPC_STORAGE_TRADE', name = 'NPC Storage Balance' },
+    { key = 'FORGE_DUST', name = 'Forge Dust' },
+    { key = 'FORGE_SLIVER', name = 'Forge Slivers' },
+    { key = 'FORGE_CORES', name = 'Exalted Cores' },
+    { key = 'WHEEL_POINTS', name = 'Wheel Points' },
+    { key = 'LESSER_GEMS', name = 'Lesser Gems' },
+    { key = 'REGULAR_GEMS', name = 'Regular Gems' },
+    { key = 'GREATER_GEMS', name = 'Greater Gems' },
+    { key = 'LESSER_FRAGMENT', name = 'Lesser Fragments' },
+    { key = 'GREATER_FRAGMENT', name = 'Greater Fragments' },
+    { key = 'BOUNTY_POINTS', name = 'Bounty Points' },
+    { key = 'SOULSEALS', name = 'Soulseals' },
+    { key = 'COIN_NORMAL', name = 'Tibia Coins' },
+    { key = 'COIN_TRANSFERRABLE', name = 'Transferable Coins' },
+    { key = 'COIN_AUCTION', name = 'Auction Coins' },
+    { key = 'COIN_TOURNAMENT', name = 'Tournament Coins' }
+}
+
+local function playerValue(player, getter, ...)
+    if not player then
+        return false, nil
+    end
+    local ok, method = pcall(function()
+        return player[getter]
+    end)
+    if not ok or type(method) ~= 'function' then
+        return false, nil
+    end
+    local valueOk, value = pcall(method, player, ...)
+    return valueOk, value
+end
+
+local function featureEnabled(feature)
+    if feature == nil or type(g_game.getFeature) ~= 'function' then
+        return false
+    end
+    local ok, enabled = pcall(g_game.getFeature, feature)
+    return ok and enabled == true
+end
+
+local function metric(player, getter, extra)
+    local available, value = playerValue(player, getter)
+    if not available then
+        return nil
+    end
+    local result = { value = value }
+    if extra then
+        extra(result)
+    end
+    return result
+end
+
+local function skillIsAvailable(id)
+    if id <= Skill.Fishing then
+        return true
+    end
+    if id <= Skill.ManaLeechAmount then
+        return featureEnabled(GameAdditionalSkills)
+    end
+    if not featureEnabled(GameForgeSkillStats) then
+        return false
+    end
+    return id ~= Skill.Transcendence or g_game.getClientVersion() >= 1332
+end
+
+local function cloneSkillSnapshot(snapshot)
+    local copy = {
+        available = snapshot.available,
+        revision = snapshot.revision,
+        skills = {},
+        resources = {}
+    }
+    for key, value in pairs(snapshot) do
+        if key ~= 'skills' and key ~= 'resources' then
+            if type(value) == 'table' then
+                copy[key] = {}
+                for field, fieldValue in pairs(value) do
+                    copy[key][field] = fieldValue
+                end
+            else
+                copy[key] = value
+            end
+        end
+    end
+    for index, skill in ipairs(snapshot.skills) do
+        copy.skills[index] = {}
+        for key, value in pairs(skill) do
+            copy.skills[index][key] = value
+        end
+    end
+    for index, resource in ipairs(snapshot.resources) do
+        copy.resources[index] = {}
+        for key, value in pairs(resource) do
+            copy.resources[index][key] = value
+        end
+    end
+    return copy
+end
+
+function getSkillSnapshot()
+    local player = g_game.getLocalPlayer()
+    local available = skillsAvailable and g_game.isOnline() and player ~= nil
+    local snapshot = {
+        available = available,
+        revision = skillRevision,
+        skills = {},
+        resources = {}
+    }
+    if not available then
+        return snapshot
+    end
+
+    snapshot.level = metric(player, 'getLevel', function(value)
+        local ok, percent = playerValue(player, 'getLevelPercent')
+        value.percent = ok and percent or nil
+    end)
+    snapshot.experience = metric(player, 'getExperience')
+    snapshot.health = metric(player, 'getHealth', function(value)
+        local ok, maximum = playerValue(player, 'getMaxHealth')
+        value.maximum = ok and maximum or nil
+    end)
+    snapshot.mana = metric(player, 'getMana', function(value)
+        local ok, maximum = playerValue(player, 'getMaxMana')
+        value.maximum = ok and maximum or nil
+    end)
+    snapshot.magic = metric(player, 'getMagicLevel', function(value)
+        local baseOk, base = playerValue(player, 'getBaseMagicLevel')
+        local percentOk, percent =
+            playerValue(player, 'getMagicLevelPercent')
+        value.base = baseOk and base or nil
+        value.percent = percentOk and percent or nil
+    end)
+    snapshot.stamina = metric(player, 'getStamina')
+    if featureEnabled(GamePlayerRegenerationTime) then
+        snapshot.regeneration = metric(player, 'getRegenerationTime')
+    end
+    if featureEnabled(GameOfflineTrainingTime) then
+        snapshot.offlineTraining =
+            metric(player, 'getOfflineTrainingTime')
+    end
+    snapshot.soul = metric(player, 'getSoul')
+    local freeOk, free = playerValue(player, 'getFreeCapacity')
+    if freeOk then
+        local totalOk, total = playerValue(player, 'getTotalCapacity')
+        local baseOk, base = playerValue(player, 'getBaseCapacity')
+        snapshot.capacity = {
+            free = free,
+            total = totalOk and total or nil,
+            base = baseOk and base or nil
+        }
+    end
+    snapshot.speed = metric(player, 'getSpeed', function(value)
+        local ok, base = playerValue(player, 'getBaseSpeed')
+        value.base = ok and base or nil
+    end)
+
+    for _, definition in ipairs(SKILL_DEFINITIONS) do
+        if skillIsAvailable(definition.id) then
+            local currentOk, current =
+                playerValue(player, 'getSkillLevel', definition.id)
+            local baseOk, base =
+                playerValue(player, 'getSkillBaseLevel', definition.id)
+            local percentOk, percent =
+                playerValue(player, 'getSkillLevelPercent', definition.id)
+            if currentOk then
+                snapshot.skills[#snapshot.skills + 1] = {
+                    id = definition.id,
+                    key = definition.key,
+                    name = definition.name,
+                    value = current,
+                    base = baseOk and base or nil,
+                    percent = percentOk and percent or nil
+                }
+            end
+        end
+    end
+
+    local resourceTypes = ResourceTypes
+    if type(resourceTypes) == 'table' then
+        for _, definition in ipairs(RESOURCE_DEFINITIONS) do
+            local resourceType = resourceTypes[definition.key]
+            if resourceType ~= nil then
+                local valueOk, value =
+                    playerValue(player, 'getResourceBalance', resourceType)
+                if valueOk and
+                    (value ~= 0 or knownSkillResources[resourceType]) then
+                    snapshot.resources[#snapshot.resources + 1] = {
+                        id = resourceType,
+                        key = definition.key,
+                        name = definition.name,
+                        value = value
+                    }
+                end
+            end
+        end
+    end
+    return snapshot
+end
+
+function subscribeSkills(callback)
+    assert(type(callback) == 'function',
+        'skill callback must be a function')
+    nextSkillObserverId = nextSkillObserverId + 1
+    local observerId = nextSkillObserverId
+    skillObservers[observerId] = callback
+    local subscribed = true
+    return function()
+        if not subscribed then
+            return
+        end
+        subscribed = false
+        skillObservers[observerId] = nil
+    end
+end
+
+local function notifySkills(changeType, rows, detail)
+    if skillNotificationsMuted then
+        return false
+    end
+    skillRevision = skillRevision + 1
+    pendingSkillChange = {
+        type = changeType,
+        rows = rows or {},
+        detail = detail,
+        revision = skillRevision
+    }
+    if skillDispatching then
+        return true
+    end
+
+    skillDispatching = true
+    local ok, dispatchError = pcall(function()
+        while pendingSkillChange do
+            local change = pendingSkillChange
+            pendingSkillChange = nil
+            local snapshot = getSkillSnapshot()
+            local observers = {}
+            for observerId, callback in pairs(skillObservers) do
+                observers[#observers + 1] = {
+                    id = observerId,
+                    callback = callback
+                }
+            end
+            table.sort(observers, function(left, right)
+                return left.id < right.id
+            end)
+            for _, observer in ipairs(observers) do
+                if skillObservers[observer.id] == observer.callback then
+                    local rows = {}
+                    for index, row in ipairs(change.rows) do
+                        rows[index] = row
+                    end
+                    local callbackOk, callbackError = pcall(
+                        observer.callback,
+                        cloneSkillSnapshot(snapshot), {
+                            type = change.type,
+                            rows = rows,
+                            detail = change.detail,
+                            revision = change.revision
+                        })
+                    if not callbackOk and g_logger and g_logger.error then
+                        g_logger.error(
+                            '[game_skills] skill observer failed: ' ..
+                            tostring(callbackError))
+                    end
+                end
+            end
+        end
+    end)
+    skillDispatching = false
+    pendingSkillChange = nil
+    if not ok then
+        error(dispatchError, 0)
+    end
+    return true
+end
+
+local function onSkillsResourcesBalanceChange(balance, oldBalance,
+                                               resourceType)
+    knownSkillResources[resourceType] = true
+    notifySkills('resource', { 'resource:' .. tostring(resourceType) },
+        resourceType)
+end
 
 -- Cache for stats data when UI elements are hidden
 local statsCache = {
@@ -71,36 +395,6 @@ local function setupUIButtons()
 end
 
 function skillController:onInit()
-    skillController:registerEvents(LocalPlayer, {
-        onExperienceChange = onExperienceChange,
-        onLevelChange = onLevelChange,
-        onHealthChange = onHealthChange,
-        onManaChange = onManaChange,
-        onSoulChange = onSoulChange,
-        onFreeCapacityChange = onFreeCapacityChange,
-        onTotalCapacityChange = onTotalCapacityChange,
-        onBaseCapacityChange = onBaseCapacityChange,
-        onStaminaChange = onStaminaChange,
-        onOfflineTrainingChange = onOfflineTrainingChange,
-        onRegenerationChange = onRegenerationChange,
-        onSpeedChange = onSpeedChange,
-        onBaseSpeedChange = onBaseSpeedChange,
-        onMagicLevelChange = onMagicLevelChange,
-        onBaseMagicLevelChange = onBaseMagicLevelChange,
-        onSkillChange = onSkillChange,
-        onBaseSkillChange = onBaseSkillChange,
-        -- 14.12
-        onFlatDamageHealingChange = onFlatDamageHealingChange,
-        onAttackInfoChange = onAttackInfoChange,
-        onConvertedDamageChange = onConvertedDamageChange,
-        onImbuementsChange = onImbuementsChange,
-        onDefenseInfoChange = onDefenseInfoChange,
-        onCombatAbsorbValuesChange = onCombatAbsorbValuesChange,
-        onForgeBonusesChange = onForgeBonusesChange,
-        onExperienceRateChange = onExperienceRateChange,
-        -- 15.24
-        onMultiOfflineTrainingDialog = onMultiOfflineTrainingDialog
-    })
     skillsButton = modules.game_mainpanel.addToggleButton('skillsButton', tr('Skills') .. ' (Alt+S)',
                                                                    '/images/options/button_skills', toggle, false, 1)
     skillsButton:setOn(true)
@@ -125,6 +419,9 @@ function skillController:onInit()
 end
 
 function skillController:onTerminate()
+    skillObservers = {}
+    pendingSkillChange = nil
+    skillDispatching = false
     Keybind.delete("Windows", "Show/hide skills windows")
     skillsWindow:destroy()
     skillsButton:destroy()
@@ -777,6 +1074,41 @@ function update()
 end
 
 function skillController:onGameStart()
+    skillNotificationsMuted = true
+    skillsAvailable = true
+    skillController:registerEvents(LocalPlayer, {
+        onExperienceChange = onExperienceChange,
+        onLevelChange = onLevelChange,
+        onHealthChange = onHealthChange,
+        onManaChange = onManaChange,
+        onSoulChange = onSoulChange,
+        onFreeCapacityChange = onFreeCapacityChange,
+        onTotalCapacityChange = onTotalCapacityChange,
+        onBaseCapacityChange = onBaseCapacityChange,
+        onStaminaChange = onStaminaChange,
+        onOfflineTrainingChange = onOfflineTrainingChange,
+        onRegenerationChange = onRegenerationChange,
+        onSpeedChange = onSpeedChange,
+        onBaseSpeedChange = onBaseSpeedChange,
+        onMagicLevelChange = onMagicLevelChange,
+        onBaseMagicLevelChange = onBaseMagicLevelChange,
+        onSkillChange = onSkillChange,
+        onBaseSkillChange = onBaseSkillChange,
+        -- 14.12
+        onFlatDamageHealingChange = onFlatDamageHealingChange,
+        onAttackInfoChange = onAttackInfoChange,
+        onConvertedDamageChange = onConvertedDamageChange,
+        onImbuementsChange = onImbuementsChange,
+        onDefenseInfoChange = onDefenseInfoChange,
+        onCombatAbsorbValuesChange = onCombatAbsorbValuesChange,
+        onForgeBonusesChange = onForgeBonusesChange,
+        onExperienceRateChange = onExperienceRateChange,
+        -- 15.24
+        onMultiOfflineTrainingDialog = onMultiOfflineTrainingDialog
+    })
+    skillController:registerEvents(g_game, {
+        onResourcesBalanceChange = onSkillsResourcesBalanceChange
+    })
     skillsWindow:setupOnStart()
     refresh()
 
@@ -809,6 +1141,8 @@ function skillController:onGameStart()
     end, 100)
     hideOldClientStats()
     updateHeight()
+    skillNotificationsMuted = false
+    notifySkills('start', { '*' })
 end
 
 function refresh()
@@ -943,6 +1277,9 @@ local function resetTable(t)
 end
 
 function skillController:onGameEnd()
+    skillsAvailable = false
+    notifySkills('end', { '*' })
+    knownSkillResources = {}
     skillsWindow:setParent(nil, true)
     if expSpeedEvent then
         expSpeedEvent:cancel()
@@ -1099,6 +1436,7 @@ function onExperienceChange(localPlayer, value)
     setSkillValue('experience', comma_value(value))
     setSkillTooltip('experience', getExperienceTooltip(localPlayer))
     onLevelChange(localPlayer, localPlayer:getLevel(), localPlayer:getLevelPercent())
+    notifySkills('experience', { 'experience' })
 end
 
 function onLevelChange(localPlayer, value, percent)
@@ -1113,24 +1451,29 @@ function onLevelChange(localPlayer, value, percent)
     setSkillValue('level', comma_value(value))
     local text = tr('You have %s percent to go', 100 - percent)
     setSkillPercent('level', percent, text)
+    notifySkills('level', { 'level' })
 end
 
 function onHealthChange(localPlayer, health, maxHealth)
     setSkillValue('health', comma_value(health))
     checkAlert('health', health, maxHealth, 30)
+    notifySkills('health', { 'health' })
 end
 
 function onManaChange(localPlayer, mana, maxMana)
     setSkillValue('mana', comma_value(mana))
     checkAlert('mana', mana, maxMana, 30)
+    notifySkills('mana', { 'mana' })
 end
 
 function onSoulChange(localPlayer, soul)
     setSkillValue('soul', soul)
+    notifySkills('soul', { 'soul' })
 end
 
 function onFreeCapacityChange(localPlayer, freeCapacity)
     setSkillValue('capacity', comma_value(freeCapacity))
+    notifySkills('capacity', { 'capacity' })
 end
 
 function onTotalCapacityChange(localPlayer, totalCapacity)
@@ -1138,6 +1481,7 @@ function onTotalCapacityChange(localPlayer, totalCapacity)
     if player then
         setSkillValue('capacity', comma_value(player:getFreeCapacity()))
     end
+    notifySkills('capacity', { 'capacity' })
 end
 
 function onBaseCapacityChange(localPlayer, baseCapacity)
@@ -1145,6 +1489,7 @@ function onBaseCapacityChange(localPlayer, baseCapacity)
     if player then
         setSkillValue('capacity', comma_value(player:getFreeCapacity()))
     end
+    notifySkills('capacity', { 'capacity' })
 end
 
 local function formatTime(minutes)
@@ -1197,6 +1542,7 @@ function onStaminaChange(localPlayer, stamina)
     end
     
     setSkillPercent('stamina', percent, tooltip, color)
+    notifySkills('stamina', { 'stamina' })
 end
 
 function onOfflineTrainingChange(localPlayer, offlineTrainingTime)
@@ -1206,6 +1552,7 @@ function onOfflineTrainingChange(localPlayer, offlineTrainingTime)
     local percent = 100 * offlineTrainingTime / (12 * 60)
     setSkillValue('offlineTraining', formatTime(offlineTrainingTime))
     setSkillPercent('offlineTraining', percent, tr('You have %s percent', percent))
+    notifySkills('offlineTraining', { 'offlineTraining' })
 end
 
 function onRegenerationChange(localPlayer, regenerationTime)
@@ -1237,16 +1584,19 @@ function onRegenerationChange(localPlayer, regenerationTime)
     if g_game.getFeature(GameEnterGameShowAppearance) then
         modules.game_interface.StatsBar.onHungryChange(regenerationTime, alert)
     end
+    notifySkills('regeneration', { 'regeneration' })
 end
 
 function onSpeedChange(localPlayer, speed)
     setSkillValue('speed', comma_value(speed))
 
     onBaseSpeedChange(localPlayer, localPlayer:getBaseSpeed())
+    notifySkills('speed', { 'speed' })
 end
 
 function onBaseSpeedChange(localPlayer, baseSpeed)
     setSkillBase('speed', localPlayer:getSpeed(), baseSpeed)
+    notifySkills('baseSpeed', { 'speed' })
 end
 
 function onMagicLevelChange(localPlayer, magiclevel, percent)
@@ -1254,10 +1604,12 @@ function onMagicLevelChange(localPlayer, magiclevel, percent)
     setSkillPercent('magiclevel', percent, tr('You have %s percent to go', 100 - percent))
 
     onBaseMagicLevelChange(localPlayer, localPlayer:getBaseMagicLevel())
+    notifySkills('magic', { 'magic' })
 end
 
 function onBaseMagicLevelChange(localPlayer, baseMagicLevel)
     setSkillBase('magiclevel', localPlayer:getMagicLevel(), baseMagicLevel)
+    notifySkills('baseMagic', { 'magic' })
 end
 
 function onSkillChange(localPlayer, id, level, percent)
@@ -1269,10 +1621,12 @@ function onSkillChange(localPlayer, id, level, percent)
     if id > Skill.ManaLeechAmount then
 	    toggleSkill('skillId' .. id, level > 0)
     end
+    notifySkills('skill', { 'skill:' .. tostring(id) }, id)
 end
 
 function onBaseSkillChange(localPlayer, id, baseLevel)
     setSkillBase('skillId' .. id, localPlayer:getSkillLevel(id), baseLevel)
+    notifySkills('baseSkill', { 'skill:' .. tostring(id) }, id)
 end
 
 local function updateExperienceRate(localPlayer)

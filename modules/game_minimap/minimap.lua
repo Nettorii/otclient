@@ -4,11 +4,172 @@ local minimapWidget = nil -- bot fix
 local otmm = true
 local oldPos = nil
 local fullscreenWidget
+local drawerMinimapState = nil
 local virtualFloor = 7
 local currentDayTime = {
     h = 12,
     m = 0
 }
+
+local function copyPosition(position)
+    if not position then
+        return nil
+    end
+    return {
+        x = position.x,
+        y = position.y,
+        z = position.z
+    }
+end
+
+local function desktopMinimap()
+    return mapController and mapController.ui and
+        mapController.ui.minimapBorder and
+        mapController.ui.minimapBorder.minimap or nil
+end
+
+local function configureDrawerFlag(widget, flag, source)
+    if not flag or flag.mobileDrawerConfigured then
+        return flag
+    end
+    flag.mobileDrawerConfigured = true
+    flag.mobileDrawerOnMouseRelease = flag.onMouseRelease
+    local previousDestroy = flag.onDestroy
+    flag.onDestroy = function(...)
+        if previousDestroy then
+            previousDestroy(...)
+        end
+        if not widget.mobileDrawerDestroying and
+            not widget.mobileDrawerSyncing and source and
+            not source:isDestroyed() then
+            source:removeFlag(flag.pos, flag.icon, flag.description)
+        end
+    end
+    return flag
+end
+
+local function configureDrawerFlags(widget, source)
+    for _, flag in pairs(widget.flags or {}) do
+        configureDrawerFlag(widget, flag, source)
+    end
+end
+
+function createDrawerMinimap(parent)
+    if not parent then
+        return nil
+    end
+    local widget = g_ui.createWidget('MobileDrawerMinimap', parent)
+    if not widget then
+        return nil
+    end
+
+    local source = desktopMinimap()
+    widget.mobileDrawerSource = source
+    local baseAddFlag = widget.addFlag
+    widget.addFlag = function(self, position, icon, description, temporary)
+        self.mobileDrawerSyncing = true
+        baseAddFlag(self, copyPosition(position), icon, description, temporary)
+        self.mobileDrawerSyncing = false
+        local flag = self:getFlag(position)
+        configureDrawerFlag(self, flag, self.mobileDrawerSource)
+        if not temporary and self.mobileDrawerSource and
+            not self.mobileDrawerSource:isDestroyed() and
+            not self.mobileDrawerSource:getFlag(position) then
+            self.mobileDrawerSource:addFlag(
+                copyPosition(position), icon, description)
+        end
+        return flag
+    end
+
+    widget.mobileDrawerSyncing = true
+    if source and source.flags then
+        for _, flag in pairs(source.flags) do
+            baseAddFlag(widget, copyPosition(flag.pos), flag.icon,
+                flag.description, flag.temporary)
+        end
+    end
+    widget.mobileDrawerSyncing = false
+    configureDrawerFlags(widget, source)
+
+    for _, id in ipairs({
+        'floorUpButton', 'floorDownButton', 'zoomInButton',
+        'zoomOutButton', 'resetButton'
+    }) do
+        local control = widget:getChildById(id)
+        if control then
+            control:hide()
+        end
+    end
+
+    local initial = drawerMinimapState
+    if not initial and source then
+        initial = {
+            camera = copyPosition(source:getCameraPosition()),
+            zoom = source:getZoom()
+        }
+    end
+    local player = g_game.getLocalPlayer()
+    local camera = initial and initial.camera or
+        (player and copyPosition(player:getPosition()) or nil)
+    if initial and initial.zoom ~= nil then
+        widget:setZoom(initial.zoom)
+    end
+    if camera then
+        widget:setCameraPosition(camera)
+    end
+    if player then
+        widget:setCrossPosition(copyPosition(player:getPosition()))
+    end
+    return widget
+end
+
+function releaseDrawerMinimap(widget)
+    if not widget or widget:isDestroyed() then
+        return false
+    end
+    drawerMinimapState = {
+        camera = copyPosition(widget:getCameraPosition()),
+        zoom = widget:getZoom()
+    }
+    widget.mobileDrawerDestroying = true
+    return true
+end
+
+function zoomDrawerMinimap(widget, direction)
+    if not widget or widget:isDestroyed() then
+        return false
+    end
+    if direction == 1 then
+        return widget:zoomIn()
+    elseif direction == -1 then
+        return widget:zoomOut()
+    end
+    return false
+end
+
+function floorDrawerMinimap(widget, direction)
+    if not widget or widget:isDestroyed() then
+        return false
+    end
+    if direction == -1 then
+        return widget:floorUp(1)
+    elseif direction == 1 then
+        return widget:floorDown(1)
+    end
+    return false
+end
+
+function centerDrawerMinimap(widget)
+    if not widget or widget:isDestroyed() then
+        return false
+    end
+    widget:reset()
+    local player = g_game.getLocalPlayer()
+    if player then
+        widget:setCrossPosition(copyPosition(player:getPosition()))
+    end
+    return true
+end
 
 local function refreshVirtualFloors()
     mapController.ui.layersPanel.layersMark:setMarginTop(((virtualFloor + 1) * 4) - 3)
@@ -142,9 +303,11 @@ function mapController:onGameEnd()
     end
 
     self.ui.minimapBorder.minimap:save()
+    drawerMinimapState = nil
 end
 
 function mapController:onTerminate()
+    drawerMinimapState = nil
     if iconTopMenu then
         iconTopMenu:destroy()
         iconTopMenu = nil

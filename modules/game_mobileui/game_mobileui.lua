@@ -731,6 +731,8 @@ function init()
   g_ui.importStyle('drawer.otui')
   g_ui.importStyle('views/inventory.otui')
   g_ui.importStyle('views/container.otui')
+  g_ui.importStyle('views/character.otui')
+  g_ui.importStyle('views/minimap.otui')
   hud = g_ui.displayUI('game_mobileui')
   status = hud:getChildById('status')
   menu = hud:getChildById('menu')
@@ -769,6 +771,14 @@ function init()
   if MobileInventory then
     replacePlaceholderDrawerView('inventory',
       MobileInventory.createDescriptor())
+  end
+  if MobileCharacter then
+    replacePlaceholderDrawerView('character',
+      MobileCharacter.createDescriptor())
+  end
+  if MobileMinimapDrawer then
+    replacePlaceholderDrawerView('minimap',
+      MobileMinimapDrawer.createDescriptor())
   end
 
   gameActive = false

@@ -1,0 +1,106 @@
+MobileCharacterSectionTitle < Label
+  height: 24
+  color: #b9c9d5
+  font: verdana-11px-antialised
+  text-align: left
+  phantom: true
+
+MobileCharacterRows < Panel
+  height: 1
+  phantom: false
+  layout:
+    type: verticalBox
+
+MobileCharacterSection < Panel
+  height: 24
+  phantom: false
+  layout:
+    type: verticalBox
+
+MobileCharacterRow < Panel
+  height: 48
+  min-height: 48
+  background-color: #101c29aa
+  border-width-bottom: 1
+  border-color-bottom: #7891a444
+  phantom: true
+
+  Label
+    id: name
+    anchors.left: parent.left
+    anchors.verticalCenter: parent.verticalCenter
+    margin-left: 10
+    width: 142
+    color: #c4d2dc
+    font: verdana-11px-antialised
+    text-align: left
+    text-wrap: true
+    phantom: true
+
+  Label
+    id: value
+    anchors.left: name.right
+    anchors.right: parent.right
+    anchors.verticalCenter: parent.verticalCenter
+    margin-left: 6
+    margin-right: 10
+    color: #f0f4f7
+    font: verdana-11px-antialised
+    text-align: right
+    text-wrap: true
+    phantom: true
+
+MobileCharacterView < Panel
+  height: 48
+  anchors.left: parent.left
+  anchors.right: parent.right
+  focusable: false
+  phantom: false
+  layout:
+    type: verticalBox
+    spacing: 6
+
+  Label
+    id: characterUnavailable
+    height: 48
+    text: Character data unavailable
+    color: #d7a7a7
+    font: verdana-11px-antialised
+    text-align: center
+    phantom: true
+    visible: false
+
+  MobileCharacterSection
+    id: characterProgressSection
+    MobileCharacterSectionTitle
+      text: Progress
+    MobileCharacterRows
+      id: characterProgressRows
+
+  MobileCharacterSection
+    id: characterVitalsSection
+    MobileCharacterSectionTitle
+      text: Vitals
+    MobileCharacterRows
+      id: characterVitalsRows
+
+  MobileCharacterSection
+    id: characterSkillsSection
+    MobileCharacterSectionTitle
+      text: Skills
+    MobileCharacterRows
+      id: characterSkillsRows
+
+  MobileCharacterSection
+    id: characterTrainingSection
+    MobileCharacterSectionTitle
+      text: Training and Stats
+    MobileCharacterRows
+      id: characterTrainingRows
+
+  MobileCharacterSection
+    id: characterResourcesSection
+    MobileCharacterSectionTitle
+      text: Resources
+    MobileCharacterRows
+      id: characterResourcesRows

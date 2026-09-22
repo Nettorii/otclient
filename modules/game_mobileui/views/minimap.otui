@@ -1,0 +1,89 @@
+MobileDrawerMinimap < Minimap
+  anchors.fill: parent
+  draggable: true
+  focusable: false
+  phantom: false
+
+MobileMinimapButton < UIButton
+  min-width: 48
+  height: 48
+  background-color: #101c29ee
+  border-width: 1
+  border-color: #7891a455
+  color: #dbe6ee
+  font: verdana-11px-antialised
+  text-align: center
+  focusable: false
+  phantom: false
+
+  $hover:
+    background-color: #17283aee
+    border-color: #8fa9ba88
+
+  $pressed:
+    background-color: #203a51ee
+    border-color: #9fc0d699
+
+MobileMinimapView < Panel
+  height: 330
+  anchors.left: parent.left
+  anchors.right: parent.right
+  focusable: false
+  phantom: false
+  layout:
+    type: verticalBox
+    spacing: 6
+
+  Panel
+    id: mobileMinimapHost
+    height: 222
+    background-color: #05090d
+    border-width: 1
+    border-color: #7891a466
+    clipping: true
+    phantom: false
+
+  Panel
+    id: minimapZoomControls
+    height: 48
+    phantom: false
+    layout:
+      type: horizontalBox
+      spacing: 6
+
+    MobileMinimapButton
+      id: minimapZoomOut
+      text: Zoom -
+
+    MobileMinimapButton
+      id: minimapCenter
+      text: Center
+
+    MobileMinimapButton
+      id: minimapZoomIn
+      text: Zoom +
+
+  Panel
+    id: minimapFloorControls
+    height: 48
+    phantom: false
+    layout:
+      type: horizontalBox
+      spacing: 6
+
+    MobileMinimapButton
+      id: minimapFloorUp
+      text: Floor up
+
+    Label
+      id: minimapFloorValue
+      min-width: 48
+      height: 48
+      color: #dbe6ee
+      font: verdana-11px-antialised
+      text-align: center
+      phantom: true
+
+    MobileMinimapButton
+      id: minimapFloorDown
+      text: Floor down
