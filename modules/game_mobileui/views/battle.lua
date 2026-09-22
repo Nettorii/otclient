@@ -51,6 +51,53 @@ function View:_closeOwnedModal()
   end
 end
 
+function View:_fitModalBody(body, session, generation)
+  local function fit()
+    if self.modalSession ~= session or
+        self.modalGeneration ~= generation or
+        session.generation ~= generation or session.body ~= body or
+        not session.handle or not session.handle:isOpen() or
+        not body or body:isDestroyed() then
+      return
+    end
+    if type(body.updateLayout) == 'function' then
+      body:updateLayout()
+    end
+    local bodyRect = type(body.getRect) == 'function' and body:getRect() or nil
+    local bodyY = bodyRect and bodyRect.y or
+      (type(body.getY) == 'function' and body:getY() or 0)
+    local paddingTop = type(body.getPaddingTop) == 'function' and
+      (tonumber(body:getPaddingTop()) or 0) or 0
+    local paddingBottom = type(body.getPaddingBottom) == 'function' and
+      (tonumber(body:getPaddingBottom()) or 0) or 0
+    local bottom = paddingTop + paddingBottom
+    for _, child in ipairs(body:getChildren()) do
+      local childRect = type(child.getRect) == 'function' and
+        child:getRect() or nil
+      local childY = childRect and childRect.y or
+        (type(child.getY) == 'function' and child:getY() or bodyY)
+      local childHeight = childRect and childRect.height or child:getHeight()
+      local marginBottom = type(child.getMarginBottom) == 'function' and
+        (tonumber(child:getMarginBottom()) or 0) or 0
+      bottom = math.max(
+        bottom, childY - bodyY + childHeight + marginBottom + paddingBottom)
+    end
+    body:setHeight(math.max(ROW_HEIGHT, bottom))
+    local parent = body:getParent()
+    if parent and type(parent.updateLayout) == 'function' then
+      parent:updateLayout()
+    end
+    if parent and type(parent.updateScrollBars) == 'function' then
+      parent:updateScrollBars()
+    end
+  end
+  if type(addEvent) == 'function' then
+    addEvent(fit)
+  else
+    fit()
+  end
+end
+
 function View:_showActionSheet(title, actions)
   local mobileUi = self.mobileUi or modules.client_mobileui
   if not mobileUi or type(mobileUi.showModal) ~= 'function' then
@@ -59,7 +106,7 @@ function View:_showActionSheet(title, actions)
   end
 
   local body = g_ui.createWidget('MobileBattleActionSheet')
-  body:setHeight(math.max(ROW_HEIGHT, (#actions + 1) * ROW_HEIGHT))
+  body:setHeight(ROW_HEIGHT)
   self:_closeOwnedModal()
   self.modalGeneration = self.modalGeneration + 1
   local session = {
@@ -120,6 +167,8 @@ function View:_showActionSheet(title, actions)
     if self.modalSession == session then
       self.modalSession = nil
     end
+  else
+    self:_fitModalBody(body, session, session.generation)
   end
   return true
 end
