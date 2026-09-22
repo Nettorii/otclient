@@ -515,6 +515,10 @@ function registerDrawerView(id, descriptor)
   return drawerHost:register(id, descriptor)
 end
 
+function bindDrawerGestureWidget(widget)
+  return drawerHost and drawerHost:bindGestureWidget(widget) or false
+end
+
 function openDrawer(id)
   return drawerHost and drawerHost:open(id) or false
 end

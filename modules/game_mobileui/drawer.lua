@@ -242,7 +242,14 @@ function Host:register(id, descriptor)
     end
     self.registry[id] = nil
     self.viewCount = self.viewCount - 1
-    if self.active and self.active.entry == entry then
+    if self.pending and self.pending.entry == entry then
+      self.transition = self.transition + 1
+      local transition = self.transition
+      self:_detachPending()
+      if not self.active then
+        self:_requestShellClose(transition)
+      end
+    elseif self.active and self.active.entry == entry then
       self:close()
     end
     self:_renderNavigation()
@@ -307,8 +314,12 @@ end
 
 function Host:_bindGestureWidget(widget, scrollBar)
   if not widget or widget:isDestroyed() then
-    return
+    return false
   end
+  if self.gestureBindings[widget] then
+    return true
+  end
+  self.gestureBindings[widget] = true
 
   local callbacks = {
     onMousePress = function(_, position, button)
@@ -333,10 +344,19 @@ function Host:_bindGestureWidget(widget, scrollBar)
   if self.connectWidget then
     self.connectWidget(widget, callbacks)
   else
-    widget.onMousePress = callbacks.onMousePress
-    widget.onMouseMove = callbacks.onMouseMove
-    widget.onMouseRelease = callbacks.onMouseRelease
+    for event, callback in pairs(callbacks) do
+      local previous = widget[event]
+      local gestureCallback = callback
+      local featureCallback = previous
+      widget[event] = function(...)
+        if gestureCallback(...) then
+          return true
+        end
+        return featureCallback and featureCallback(...) or false
+      end
+    end
   end
+  return true
 end
 
 function Host:_bindGestureTree(widget)
@@ -351,6 +371,14 @@ function Host:_bindGestureTree(widget)
       self:_bindGestureTree(child)
     end
   end
+end
+
+function Host:bindGestureWidget(widget)
+  if not widget or widget:isDestroyed() then
+    return false
+  end
+  self:_bindGestureTree(widget)
+  return true
 end
 
 function Host:_clearNavigation()
@@ -376,7 +404,7 @@ function Host:_renderNavigation()
     if entry.descriptor.icon ~= '' and button.setImageSource then
       button:setImageSource(entry.descriptor.icon)
     end
-    button:setEnabled(not self.active or self.active.entry ~= entry)
+    button:setEnabled(true)
     self:_bindGestureWidget(button, self.navigationScrollBar)
     button.onClick = function()
       if self.gesture.suppressClick then
@@ -410,6 +438,17 @@ function Host:_applyGeometry(profile)
   return true
 end
 
+function Host:_positionInsideSurface(position)
+  local geometry = self.geometry
+  if not geometry or not position then
+    return false
+  end
+  return position.x >= geometry.x and
+    position.x < geometry.x + geometry.width and
+    position.y >= geometry.y and
+    position.y < geometry.y + geometry.height
+end
+
 function Host:_destroyBackdrop()
   if self.unsubscribeProfile then
     self.unsubscribeProfile()
@@ -425,6 +464,7 @@ function Host:_destroyBackdrop()
   self.navigationScrollBar = nil
   self.navigationButtons = {}
   self.geometry = nil
+  self.backdropPressOutside = false
 
   if backdrop and not backdrop:isDestroyed() then
     self.destroyingBackdrop = true
@@ -468,25 +508,39 @@ function Host:_ensureBackdrop(profile)
   backdrop.onMousePress = function(_, position, button)
     self.cancelGestures()
     if button == MouseLeftButton then
-      self:_beginGesture(position)
+      self.backdropPressOutside = not self:_positionInsideSurface(position)
+      if self.backdropPressOutside then
+        self:_beginGesture(position)
+      end
     else
+      self.backdropPressOutside = false
       self.gesture.suppressClick = true
     end
     return true
   end
   backdrop.onMouseMove = function(_, position)
-    self:_moveGesture(position)
+    if self.backdropPressOutside then
+      self:_moveGesture(position)
+    end
     return true
   end
   backdrop.onMouseRelease = function(_, position, button)
     if button == MouseLeftButton then
-      self:_moveGesture(position)
-      local tap = not self.gesture.dragged
-      self:_finishGesture(button)
-      if tap then
+      local pressedOutside = self.backdropPressOutside
+      local releasedOutside = not self:_positionInsideSurface(position)
+      self.backdropPressOutside = false
+      if pressedOutside then
+        self:_moveGesture(position)
+      end
+      local tap = pressedOutside and not self.gesture.dragged
+      if pressedOutside then
+        self:_finishGesture(button)
+      end
+      if tap and releasedOutside then
         self:close()
       end
     else
+      self.backdropPressOutside = false
       self:_finishGesture(button)
     end
     return true
@@ -513,24 +567,67 @@ function Host:_ensureBackdrop(profile)
   return true
 end
 
-function Host:_cleanupRecord(record)
-  if not record or record.cleaned then
+function Host:_callRecord(record, callback, ...)
+  record.callbackDepth = record.callbackDepth + 1
+  self.callbackDepth = self.callbackDepth + 1
+  local ok, result = pcall(callback, ...)
+  record.callbackDepth = record.callbackDepth - 1
+  self.callbackDepth = self.callbackDepth - 1
+  if not ok then
+    self.logError(result)
+  end
+  if record.cleanupRequested and record.callbackDepth == 0 and
+      not record.finalizing then
+    self:_finalizeRecord(record)
+  end
+  if not record.finalizing then
+    self:_completeDeferredClose()
+  end
+  return ok, result
+end
+
+function Host:_finalizeRecord(record)
+  if not record or record.finalized then
     return
   end
-  record.cleaned = true
+  if record.callbackDepth > 0 then
+    record.cleanupRequested = true
+    return
+  end
+
+  record.finalizing = true
   if record.holder and not record.holder:isDestroyed() then
     record.holder:setEnabled(false)
     record.holder:hide()
   end
-  if record.shown then
-    self:_safeCall(record.entry.descriptor.onHide)
+  if not record.hideCalled then
+    record.hideCalled = true
+    self:_callRecord(record, record.entry.descriptor.onHide)
   end
-  if record.creationStarted then
-    self:_safeCall(record.entry.descriptor.destroy)
+  if not record.destroyCalled then
+    record.destroyCalled = true
+    self:_callRecord(record, record.entry.descriptor.destroy)
   end
+  record.finalized = true
+  record.finalizing = false
   if record.holder and not record.holder:isDestroyed() then
     record.holder:destroy()
   end
+end
+
+function Host:_requestCleanup(record)
+  if not record or record.finalized then
+    return
+  end
+  record.cleanupRequested = true
+  if record.holder and not record.holder:isDestroyed() then
+    record.holder:setEnabled(false)
+    record.holder:hide()
+  end
+  if record.callbackDepth == 0 and not record.finalizing then
+    self:_finalizeRecord(record)
+  end
+  self:_completeDeferredClose()
 end
 
 function Host:_detachActive()
@@ -539,7 +636,36 @@ function Host:_detachActive()
     return
   end
   self.active = nil
-  self:_cleanupRecord(record)
+  self:_requestCleanup(record)
+end
+
+function Host:_detachPending()
+  local record = self.pending
+  if not record then
+    return
+  end
+  self.pending = nil
+  self:_requestCleanup(record)
+end
+
+function Host:_requestShellClose(transition)
+  if self.callbackDepth > 0 then
+    self.deferredCloseTransition = transition
+    return
+  end
+  if self.transition == transition and not self.active and not self.pending then
+    self:_destroyBackdrop()
+    self:_restorePreviousForeground()
+  end
+end
+
+function Host:_completeDeferredClose()
+  local transition = self.deferredCloseTransition
+  if not transition or self.callbackDepth > 0 then
+    return
+  end
+  self.deferredCloseTransition = nil
+  self:_requestShellClose(transition)
 end
 
 function Host:_restorePreviousForeground()
@@ -578,6 +704,22 @@ function Host:_acquireForeground()
   return true
 end
 
+function Host:_openingIsCurrent(record, transition)
+  return self.transition == transition and not self.terminated and
+    self.pending == record and not record.cleanupRequested and
+    not record.finalized and self.registry[record.entry.id] == record.entry and
+    self:_ownsForeground()
+end
+
+function Host:_rollbackOpening(record, transition)
+  if self.pending == record then
+    self.pending = nil
+  end
+  self:_requestCleanup(record)
+  self:_requestShellClose(transition)
+  return false
+end
+
 function Host:open(id)
   if self.terminated then
     return false
@@ -585,10 +727,6 @@ function Host:open(id)
   local entry = self.registry[id]
   if not entry then
     return false
-  end
-  if self.active and self.active.entry == entry then
-    self:close()
-    return true
   end
 
   if not self:_ownsForeground() then
@@ -605,12 +743,21 @@ function Host:open(id)
 
   self.transition = self.transition + 1
   local transition = self.transition
+  self:_detachPending()
+  if self.transition ~= transition then
+    return false
+  end
+  if self.active and self.active.entry == entry then
+    self:close()
+    return true
+  end
+
   self.cancelGestures()
   if not self:_acquireForeground() then
     return false
   end
   if self.transition ~= transition or not self:_ownsForeground() then
-    return self.active ~= nil
+    return false
   end
   if not self:_ensureBackdrop(profile) then
     if self.transition == transition then
@@ -619,51 +766,63 @@ function Host:open(id)
     return false
   end
 
-  self:_detachActive()
-  if self.transition ~= transition or not self:_ownsForeground() then
-    return self.active ~= nil
-  end
-
+  local previous = self.active
   local holder = self.createWidget('MobileDrawerViewHost', self.content)
+  holder:setEnabled(false)
+  holder:hide()
   local record = {
     entry = entry,
     holder = holder,
-    creationStarted = true,
-    shown = false,
-    cleaned = false
+    callbackDepth = 0,
+    cleanupRequested = false,
+    finalized = false,
+    finalizing = false,
+    hideCalled = false,
+    destroyCalled = false
   }
-  self.active = record
-  self.title:setText(entry.descriptor.title)
-  local created, view = self:_safeCall(entry.descriptor.create, holder)
-  if created and view and view ~= holder and view.setParent and
+  self.pending = record
+
+  local created, view = self:_callRecord(
+    record, entry.descriptor.create, holder)
+  if not created then
+    return self:_rollbackOpening(record, transition)
+  end
+  if not self:_openingIsCurrent(record, transition) then
+    self:_requestCleanup(record)
+    return false
+  end
+  if view and view ~= holder and view.setParent and
       not view:isDestroyed() and view:getParent() ~= holder then
     view:setParent(holder)
   end
-  if not created then
-    if self.active == record then
-      self.active = nil
-    end
-    self:_cleanupRecord(record)
-    if self.transition == transition then
-      self:_destroyBackdrop()
-      self:_restorePreviousForeground()
-    end
+  self:_bindGestureTree(holder)
+
+  local shown, showResult = self:_callRecord(
+    record, entry.descriptor.onShow)
+  if not shown or showResult == false then
+    return self:_rollbackOpening(record, transition)
+  end
+  if not self:_openingIsCurrent(record, transition) then
+    self:_requestCleanup(record)
     return false
   end
+
+  self.pending = nil
+  self.active = record
+  record.committed = true
+  if previous and previous ~= record then
+    self:_requestCleanup(previous)
+  end
   if self.transition ~= transition or self.active ~= record or
+      record.cleanupRequested or record.finalized or
       not self:_ownsForeground() then
-    self:_cleanupRecord(record)
-    return self.active ~= nil
+    self:_requestCleanup(record)
+    return false
   end
 
-  self:_bindGestureTree(holder)
-  record.shown = true
-  self:_safeCall(entry.descriptor.onShow)
-  if self.transition ~= transition or self.active ~= record or
-      not self:_ownsForeground() then
-    return self.active ~= nil
-  end
-
+  holder:setEnabled(true)
+  holder:show()
+  self.title:setText(entry.descriptor.title)
   self:_renderNavigation()
   self.backdrop:show()
   self.backdrop:raise()
@@ -680,14 +839,14 @@ function Host:close()
   local transition = self.transition
   self.closing = true
   self.cancelGestures()
+  self:_detachPending()
   self:_detachActive()
   self.closing = false
 
   if self.transition ~= transition then
     return self.active == nil
   end
-  self:_destroyBackdrop()
-  self:_restorePreviousForeground()
+  self:_requestShellClose(transition)
   return true
 end
 
@@ -713,9 +872,9 @@ function Host:terminate()
   self.terminated = true
   self.transition = self.transition + 1
   self.cancelGestures()
+  self:_detachPending()
   self:_detachActive()
-  self:_destroyBackdrop()
-  self:_restorePreviousForeground()
+  self:_requestShellClose(self.transition)
   self:_removeActionHandler()
   self.registry = {}
   self.viewCount = 0
@@ -750,6 +909,8 @@ function MobileDrawer.create(options)
     viewCount = 0,
     navigationButtons = {},
     gesture = {},
+    gestureBindings = setmetatable({}, { __mode = 'k' }),
+    callbackDepth = 0,
     transition = 0,
     terminated = false
   }, Host)
@@ -770,7 +931,7 @@ function MobileDrawer.create(options)
   end
   function host.foregroundOwner:onForegroundLost()
     host.cancelGestures()
-    if host.active then
+    if host.active or host.pending then
       host:close()
     end
   end
