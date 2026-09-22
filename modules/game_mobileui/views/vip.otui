@@ -1,0 +1,163 @@
+MobileVipControl < UIButton
+  min-width: 56
+  height: 56
+  background-color: #101c29ee
+  border-width: 1
+  border-color: #7891a455
+  color: #dbe6ee
+  font: verdana-11px-antialised
+  text-align: center
+  focusable: false
+  phantom: false
+
+  $pressed:
+    background-color: #203a51ee
+
+MobileVipRow < UIButton
+  height: 56
+  min-height: 56
+  background-color: #101c29dd
+  border-width-bottom: 1
+  border-color-bottom: #7891a455
+  focusable: false
+  phantom: false
+
+  $pressed:
+    background-color: #203a51ee
+
+  Label
+    id: state
+    anchors.left: parent.left
+    anchors.verticalCenter: parent.verticalCenter
+    margin-left: 8
+    width: 48
+    color: #df8686
+    font: verdana-11px-antialised
+    text-align: left
+    phantom: true
+
+  Label
+    id: name
+    anchors.left: state.right
+    anchors.right: actions.left
+    anchors.top: parent.top
+    margin-left: 5
+    margin-top: 7
+    margin-right: 5
+    height: 20
+    color: #f0f4f7
+    font: verdana-11px-antialised
+    text-align: left
+    phantom: true
+
+  Label
+    id: description
+    anchors.left: name.left
+    anchors.right: name.right
+    anchors.bottom: parent.bottom
+    margin-bottom: 7
+    height: 18
+    color: #aebdca
+    font: verdana-11px-antialised
+    text-align: left
+    phantom: true
+
+  UIButton
+    id: actions
+    anchors.right: parent.right
+    anchors.verticalCenter: parent.verticalCenter
+    size: 56 56
+    text: "..."
+    color: #dbe6ee
+    font: verdana-11px-antialised
+    text-align: center
+    focusable: false
+    phantom: false
+
+MobileVipGroup < Panel
+  height: 48
+  phantom: false
+  layout:
+    type: verticalBox
+
+  UIButton
+    id: groupHeader
+    height: 48
+    background-color: #172635ee
+    border-width-bottom: 1
+    border-color-bottom: #7891a466
+    focusable: false
+    phantom: false
+
+    Label
+      id: groupName
+      anchors.left: parent.left
+      anchors.right: groupActions.left
+      anchors.verticalCenter: parent.verticalCenter
+      margin-left: 9
+      margin-right: 5
+      color: #c8d6df
+      font: verdana-11px-antialised
+      text-align: left
+      phantom: true
+
+    UIButton
+      id: groupActions
+      anchors.right: parent.right
+      anchors.verticalCenter: parent.verticalCenter
+      size: 48 48
+      text: "..."
+      color: #dbe6ee
+      font: verdana-11px-antialised
+      text-align: center
+      focusable: false
+      phantom: false
+
+  Panel
+    id: groupRows
+    height: 0
+    phantom: false
+    layout:
+      type: verticalBox
+
+MobileVipView < Panel
+  height: 118
+  anchors.left: parent.left
+  anchors.right: parent.right
+  focusable: false
+  phantom: false
+  layout:
+    type: verticalBox
+    spacing: 6
+
+  Panel
+    id: vipControls
+    height: 56
+    phantom: false
+    layout:
+      type: horizontalBox
+      spacing: 4
+
+    MobileVipControl
+      id: vipAdd
+      text: Add VIP
+
+    MobileVipControl
+      id: vipGroups
+      text: Groups
+
+  Label
+    id: vipEmpty
+    height: 56
+    text: VIP list is empty
+    color: #b9c9d5
+    font: verdana-11px-antialised
+    text-align: center
+    phantom: true
+
+  Panel
+    id: vipGroupsList
+    height: 56
+    phantom: false
+    layout:
+      type: verticalBox

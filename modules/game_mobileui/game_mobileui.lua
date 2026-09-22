@@ -733,6 +733,8 @@ function init()
   g_ui.importStyle('views/container.otui')
   g_ui.importStyle('views/character.otui')
   g_ui.importStyle('views/minimap.otui')
+  g_ui.importStyle('views/battle.otui')
+  g_ui.importStyle('views/vip.otui')
   hud = g_ui.displayUI('game_mobileui')
   status = hud:getChildById('status')
   menu = hud:getChildById('menu')
@@ -779,6 +781,14 @@ function init()
   if MobileMinimapDrawer then
     replacePlaceholderDrawerView('minimap',
       MobileMinimapDrawer.createDescriptor())
+  end
+  if MobileBattle then
+    replacePlaceholderDrawerView('battle',
+      MobileBattle.createDescriptor())
+  end
+  if MobileVip then
+    replacePlaceholderDrawerView('vip',
+      MobileVip.createDescriptor())
   end
 
   gameActive = false

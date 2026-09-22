@@ -17,6 +17,376 @@ local globalSettings = {
     vipSortOrder = {}
 }
 
+local vipObservers = {}
+local nextVipObserverId = 0
+local vipRevision = 0
+local vipDispatching = false
+local vipDispatchState = nil
+local vipSemanticAvailable = g_game.isOnline() == true
+
+local function vipValueCopy(value, seen)
+    local valueType = type(value)
+    if valueType ~= 'table' then
+        if valueType == 'number' or valueType == 'string' or
+            valueType == 'boolean' then
+            return value
+        end
+        return nil
+    end
+    seen = seen or {}
+    if seen[value] then
+        return nil
+    end
+    seen[value] = true
+    local copy = {}
+    for key, fieldValue in pairs(value) do
+        local copiedKey = vipValueCopy(key, seen)
+        local copiedValue = vipValueCopy(fieldValue, seen)
+        if copiedKey ~= nil and copiedValue ~= nil then
+            copy[copiedKey] = copiedValue
+        end
+    end
+    seen[value] = nil
+    return copy
+end
+
+local function cloneVipSnapshot(snapshot)
+    return vipValueCopy(snapshot) or {
+        available = false,
+        revision = snapshot and snapshot.revision or vipRevision,
+        entries = {},
+        groups = {}
+    }
+end
+
+local function vipFeature(feature)
+    return feature ~= nil and type(g_game.getFeature) == 'function' and
+        g_game.getFeature(feature) == true
+end
+
+local function sortedVipIds(vips)
+    local ids = {}
+    for id in pairs(vips or {}) do
+        ids[#ids + 1] = id
+    end
+    table.sort(ids, function(left, right)
+        local leftNumber, rightNumber = tonumber(left), tonumber(right)
+        if leftNumber and rightNumber then
+            return leftNumber < rightNumber
+        end
+        return tostring(left) < tostring(right)
+    end)
+    return ids
+end
+
+function getVipSnapshot()
+    local available = vipSemanticAvailable and g_game.isOnline() == true
+    local snapshot = {
+        available = available,
+        revision = vipRevision,
+        groupsAvailable = available and vipFeature(GameVipGroups),
+        grouped = globalSettings.showGrouped == true,
+        hideOffline = globalSettings.hideOfflineVips == true,
+        entries = {},
+        groups = {}
+    }
+    if not available then
+        return snapshot
+    end
+
+    for _, group in ipairs(vipGroups or {}) do
+        if type(group) == 'table' and group[1] ~= nil then
+            snapshot.groups[#snapshot.groups + 1] = {
+                id = group[1],
+                name = tostring(group[2] or ''),
+                editable = group[3] == true
+            }
+        end
+    end
+    table.sort(snapshot.groups, function(left, right)
+        local leftName = left.name:lower()
+        local rightName = right.name:lower()
+        if leftName == rightName then
+            return tostring(left.id) < tostring(right.id)
+        end
+        return leftName < rightName
+    end)
+
+    local vips = g_game.getVips() or {}
+    for _, id in ipairs(sortedVipIds(vips)) do
+        local vip = vips[id] or {}
+        local name = tostring(vip[1] or '')
+        local cached = vipInfo[name] or vipInfo[name:lower()] or {}
+        local state = vip[2]
+        local description = vip[3]
+        local icon = vip[4]
+        local notify = vip[5]
+        local groups = vip[6]
+        if not vipFeature(GameAdditionalVipInfo) then
+            description = cached.vipDesc or cached.description or description
+            icon = cached.icon or cached.iconId or icon
+            if cached.hasNotify ~= nil then
+                notify = cached.hasNotify
+            elseif cached.notifyLogin ~= nil then
+                notify = cached.notifyLogin
+            end
+            groups = cached.vipGroups or groups
+        end
+        local entryGroups = {}
+        for _, groupId in ipairs(type(groups) == 'table' and groups or {}) do
+            entryGroups[#entryGroups + 1] = groupId
+        end
+        table.sort(entryGroups, function(left, right)
+            return tostring(left) < tostring(right)
+        end)
+        local numericId = tonumber(id)
+        snapshot.entries[#snapshot.entries + 1] = {
+            id = numericId or id,
+            guid = numericId or id,
+            name = name,
+            state = state,
+            online = state == VipState.Online,
+            icon = tonumber(icon) or 0,
+            description = tostring(description or ''),
+            notify = notify == true,
+            groups = entryGroups,
+            canMessage = state == VipState.Online,
+            canEdit = true,
+            canRemove = true
+        }
+    end
+    table.sort(snapshot.entries, function(left, right)
+        local leftName = left.name:lower()
+        local rightName = right.name:lower()
+        if leftName == rightName then
+            return tostring(left.id) < tostring(right.id)
+        end
+        return leftName < rightName
+    end)
+    return snapshot
+end
+
+function subscribeVips(callback)
+    assert(type(callback) == 'function',
+        'VIP callback must be a function')
+    nextVipObserverId = nextVipObserverId + 1
+    local observerId = nextVipObserverId
+    vipObservers[observerId] = callback
+    local subscribed = true
+    return function()
+        if not subscribed then
+            return
+        end
+        subscribed = false
+        vipObservers[observerId] = nil
+    end
+end
+
+local function mergeVipChange(pending, changeType, id, revision)
+    if pending.revision ~= nil and pending.type ~= changeType then
+        pending.type = 'batch'
+    elseif pending.revision == nil then
+        pending.type = changeType
+    end
+    pending.revision = revision
+    if id ~= nil and not pending.idSet[id] then
+        pending.idSet[id] = true
+        pending.ids[#pending.ids + 1] = id
+    end
+end
+
+local function newVipChange(changeType, id, revision)
+    local pending = {
+        type = nil,
+        ids = {},
+        idSet = {},
+        revision = nil
+    }
+    mergeVipChange(pending, changeType, id, revision)
+    return pending
+end
+
+function publishVipChange(changeType, id)
+    vipRevision = vipRevision + 1
+    if vipDispatching then
+        for _, observer in ipairs(vipDispatchState.observers) do
+            if vipObservers[observer.id] == observer.callback then
+                mergeVipChange(observer.pending, changeType, id, vipRevision)
+            end
+        end
+        return true
+    end
+
+    local observers = {}
+    for observerId, callback in pairs(vipObservers) do
+        observers[#observers + 1] = {
+            id = observerId,
+            callback = callback,
+            pending = newVipChange(changeType, id, vipRevision)
+        }
+    end
+    table.sort(observers, function(left, right)
+        return left.id < right.id
+    end)
+    vipDispatchState = { observers = observers }
+    vipDispatching = true
+    local ok, dispatchError = pcall(function()
+        local hasPending = true
+        while hasPending do
+            hasPending = false
+            for _, observer in ipairs(observers) do
+                if vipObservers[observer.id] == observer.callback then
+                    local pending = observer.pending
+                    if pending.revision ~= nil then
+                        observer.pending = newVipChange(nil, nil, nil)
+                        local ids = {}
+                        for index, changedId in ipairs(pending.ids) do
+                            ids[index] = changedId
+                        end
+                        local callbackOk, callbackError = pcall(
+                            observer.callback,
+                            cloneVipSnapshot(getVipSnapshot()), {
+                                type = pending.type,
+                                ids = ids,
+                                revision = pending.revision
+                            })
+                        if not callbackOk and g_logger and g_logger.error then
+                            g_logger.error(
+                                '[game_viplist] VIP observer failed: ' ..
+                                tostring(callbackError))
+                        end
+                    end
+                else
+                    observer.pending = newVipChange(nil, nil, nil)
+                end
+                if observer.pending.revision ~= nil then
+                    hasPending = true
+                end
+            end
+        end
+    end)
+    vipDispatching = false
+    vipDispatchState = nil
+    if not ok then
+        error(dispatchError, 0)
+    end
+    return true
+end
+
+local function currentVipEntry(id)
+    for _, entry in ipairs(getVipSnapshot().entries) do
+        if tostring(entry.id) == tostring(id) then
+            return entry
+        end
+    end
+    return nil
+end
+
+local function currentVipGroup(id)
+    for _, group in ipairs(getVipSnapshot().groups) do
+        if tostring(group.id) == tostring(id) then
+            return group
+        end
+    end
+    return nil
+end
+
+local function currentVipWidget(id)
+    if not vipWindow or vipWindow:isDestroyed() then
+        return nil
+    end
+    return vipWindow:recursiveGetChildById('vip' .. tostring(id))
+end
+
+function addVipEntry(name)
+    if not getVipSnapshot().available then
+        return false
+    end
+    if name == nil then
+        createAddWindow()
+        return true
+    end
+    if type(name) ~= 'string' or name:match('^%s*$') then
+        return false
+    end
+    g_game.addVip(name)
+    return true
+end
+
+function messageVipEntry(id)
+    local entry = currentVipEntry(id)
+    if not entry or not entry.canMessage then
+        return false
+    end
+    g_game.openPrivateChannel(entry.name)
+    return true
+end
+
+function editVipEntry(id)
+    local entry = currentVipEntry(id)
+    local widget = entry and currentVipWidget(entry.id) or nil
+    if not widget or editVipWindow then
+        return false
+    end
+    createEditWindow(widget)
+    return true
+end
+
+function removeVipEntry(id)
+    local entry = currentVipEntry(id)
+    if not entry then
+        return false
+    end
+    local widget = currentVipWidget(entry.id)
+    if widget then
+        removeVip(widget)
+    else
+        g_game.removeVip(entry.id)
+    end
+    publishVipChange('remove', entry.id)
+    return true
+end
+
+function addVipGroup(name)
+    if not getVipSnapshot().groupsAvailable or maxVipGroups < 1 then
+        return false
+    end
+    if name == nil then
+        createAddGroupWindow()
+        return true
+    end
+    if type(name) ~= 'string' or name:match('^%s*$') then
+        return false
+    end
+    g_game.editVipGroups(1, 0, name)
+    return true
+end
+
+function editVipGroup(id, name)
+    local group = currentVipGroup(id)
+    if not group or not group.editable then
+        return false
+    end
+    if name == nil then
+        createEditGroupWindow(group.name, group.id)
+        return true
+    end
+    if type(name) ~= 'string' or name:match('^%s*$') then
+        return false
+    end
+    g_game.editVipGroups(2, group.id, name)
+    return true
+end
+
+function removeVipGroup(id)
+    local group = currentVipGroup(id)
+    if not group or not group.editable then
+        return false
+    end
+    g_game.editVipGroups(3, group.id, '')
+    return true
+end
+
 controllerVip = Controller:new()
 function controllerVip:onInit()
 
@@ -90,6 +460,8 @@ function controllerVip:onInit()
 end
 
 function controllerVip:onTerminate()
+    vipSemanticAvailable = false
+    publishVipChange('terminate')
     Keybind.delete("Windows", "Show/hide VIP list")
     local ArrayWidgets = {addVipWindow, editVipWindow, vipWindow, vipButton, addGroupWindow}
     for _, widget in ipairs(ArrayWidgets) do
@@ -102,6 +474,7 @@ function controllerVip:onTerminate()
 end
 
 function controllerVip:onGameStart()
+    vipSemanticAvailable = true
     if not g_game.getFeature(GameAdditionalVipInfo) then
         loadVipInfo()
     end
@@ -113,10 +486,13 @@ function controllerVip:onGameStart()
     end
     vipWindow:setupOnStart() -- load character window configuration
     refresh()
+    publishVipChange('start')
     vipButton:setOn(vipButton:isOn())
 end
 
 function controllerVip:onGameEnd()
+    vipSemanticAvailable = false
+    publishVipChange('end')
     local settings = {}
     settings['Grouped'] = globalSettings.showGrouped or false
     settings['OfflineVips'] = globalSettings.hideOfflineVips or false
@@ -507,6 +883,7 @@ function compareVips(a, b)
 end
 
 function onAddVip(id, name, state, description, iconId, notify, groupID, bool)
+    publishVipChange('add', id)
     if g_game.getFeature(GameAdditionalVipInfo) then
         vipInfo[name] = {
             playerId = id,
@@ -625,6 +1002,7 @@ function onAddVip(id, name, state, description, iconId, notify, groupID, bool)
 end
 
 function onVipStateChange(id, state, groupID)
+    publishVipChange('state', id)
     if g_game.getFeature(GameVipGroups) and globalSettings.showGrouped then
         local name, description, iconId, notify = searchPlayerbyId(id)
         onAddVip(id, name, state, description, iconId, notify, groupID, true)
@@ -873,6 +1251,7 @@ function onVipGroupChange(vipGroupsArray, groupsAmountLeft)
     vipGroups = vipGroupsArray
     maxVipGroups = groupsAmountLeft
     editableGroupCount = groupsAmountLeft
+    publishVipChange('group')
     refresh()
 end
 

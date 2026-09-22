@@ -1,0 +1,121 @@
+MobileBattleControl < UIButton
+  min-width: 56
+  height: 56
+  background-color: #101c29ee
+  border-width: 1
+  border-color: #7891a455
+  color: #dbe6ee
+  font: verdana-11px-antialised
+  text-align: center
+  focusable: false
+  phantom: false
+
+  $pressed:
+    background-color: #203a51ee
+
+MobileBattleRow < UIButton
+  height: 56
+  min-height: 56
+  background-color: #101c29dd
+  border-width-bottom: 1
+  border-color-bottom: #7891a455
+  focusable: false
+  phantom: false
+
+  $on:
+    background-color: #49302aee
+    border-width: 1
+    border-color: #e68a62cc
+
+  $pressed:
+    background-color: #203a51ee
+
+  Label
+    id: type
+    anchors.left: parent.left
+    anchors.verticalCenter: parent.verticalCenter
+    margin-left: 8
+    width: 58
+    color: #93a9b8
+    font: verdana-11px-antialised
+    text-align: left
+    phantom: true
+
+  Label
+    id: name
+    anchors.left: type.right
+    anchors.right: health.left
+    anchors.top: parent.top
+    margin-left: 4
+    margin-top: 7
+    margin-right: 5
+    height: 20
+    color: #f0f4f7
+    font: verdana-11px-antialised
+    text-align: left
+    phantom: true
+
+  Label
+    id: state
+    anchors.left: name.left
+    anchors.right: name.right
+    anchors.bottom: parent.bottom
+    margin-bottom: 7
+    height: 18
+    color: #e6a17f
+    font: verdana-11px-antialised
+    text-align: left
+    phantom: true
+
+  Label
+    id: health
+    anchors.right: parent.right
+    anchors.verticalCenter: parent.verticalCenter
+    margin-right: 9
+    width: 46
+    color: #8ee28e
+    font: verdana-11px-antialised
+    text-align: right
+    phantom: true
+
+MobileBattleView < Panel
+  height: 118
+  anchors.left: parent.left
+  anchors.right: parent.right
+  focusable: false
+  phantom: false
+  layout:
+    type: verticalBox
+    spacing: 6
+
+  Panel
+    id: battleControls
+    height: 56
+    phantom: false
+    layout:
+      type: horizontalBox
+      spacing: 4
+
+    MobileBattleControl
+      id: battleFilter
+      text: Filters
+
+    MobileBattleControl
+      id: battleSort
+      text: Sort
+
+  Label
+    id: battleEmpty
+    height: 56
+    text: No creatures nearby
+    color: #b9c9d5
+    font: verdana-11px-antialised
+    text-align: center
+    phantom: true
+
+  Panel
+    id: battleRows
+    height: 56
+    phantom: false
+    layout:
+      type: verticalBox

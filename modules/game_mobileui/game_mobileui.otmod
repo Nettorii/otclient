@@ -4,7 +4,7 @@ Module
   author: OTClient team
   website: https://github.com/mehah/otclient
   sandboxed: true
-  scripts: [ status, actions, hotbar, drawer, views/inventory, views/character, views/minimap, game_mobileui ]
-  dependencies: [ client_mobileui, game_interface, game_actionbar, game_inventory, game_containers, game_skills, game_minimap ]
+  scripts: [ status, actions, hotbar, drawer, views/inventory, views/character, views/minimap, views/battle, views/vip, game_mobileui ]
+  dependencies: [ client_mobileui, game_interface, game_actionbar, game_inventory, game_containers, game_skills, game_minimap, game_battle, game_viplist ]
   @onLoad: init()
   @onUnload: terminate()

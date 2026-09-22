@@ -44,6 +44,497 @@ local BattleListManager = {
     isRestoring = false
 }
 
+local battleObservers = {}
+local nextBattleObserverId = 0
+local battleRevision = 0
+local battleDispatching = false
+local battleDispatchState = nil
+local battleSemanticConnected = false
+local battleSemanticAvailable = g_game.isOnline() == true
+local battleAges = {}
+local nextBattleAge = 0
+
+local BATTLE_HIDE_OPTIONS = {
+    'hidePlayers', 'hideNPCs', 'hideMonsters', 'hideSkulls', 'hideParty',
+    'hideKnights', 'hidePaladins', 'hideDruids', 'hideSorcerers',
+    'hideMonks', 'hideSummons', 'hideMembersOwnGuild'
+}
+
+local BATTLE_SORT_OPTIONS = {
+    sortAscByDisplayTime = { type = 'age', order = 'A' },
+    sortDescByDisplayTime = { type = 'age', order = 'D' },
+    sortAscByDistance = { type = 'distance', order = 'A' },
+    sortDescByDistance = { type = 'distance', order = 'D' },
+    sortAscByHitPoints = { type = 'health', order = 'A' },
+    sortDescByHitPoints = { type = 'health', order = 'D' },
+    sortAscByName = { type = 'name', order = 'A' },
+    sortDescByName = { type = 'name', order = 'D' }
+}
+
+local function battleCall(object, method, ...)
+    if not object then
+        return false, nil
+    end
+    local ok, callback = pcall(function()
+        return object[method]
+    end)
+    if not ok or type(callback) ~= 'function' then
+        return false, nil
+    end
+    return pcall(callback, object, ...)
+end
+
+local function battleBoolean(object, method)
+    local ok, value = battleCall(object, method)
+    return ok and value == true
+end
+
+local function battleValueCopy(value, seen)
+    local valueType = type(value)
+    if valueType ~= 'table' then
+        if valueType == 'number' or valueType == 'string' or
+            valueType == 'boolean' then
+            return value
+        end
+        return nil
+    end
+    seen = seen or {}
+    if seen[value] then
+        return nil
+    end
+    seen[value] = true
+    local copy = {}
+    for key, fieldValue in pairs(value) do
+        local copiedKey = battleValueCopy(key, seen)
+        local copiedValue = battleValueCopy(fieldValue, seen)
+        if copiedKey ~= nil and copiedValue ~= nil then
+            copy[copiedKey] = copiedValue
+        end
+    end
+    seen[value] = nil
+    return copy
+end
+
+local function cloneBattleSnapshot(snapshot)
+    return battleValueCopy(snapshot) or {
+        available = false,
+        revision = snapshot and snapshot.revision or battleRevision,
+        rows = {},
+        filters = {}
+    }
+end
+
+local function currentBattleSpectators()
+    local interface = modules and modules.game_interface
+    local panel = interface and type(interface.getMapPanel) == 'function' and
+        interface.getMapPanel() or nil
+    if not panel or type(panel.getSpectators) ~= 'function' then
+        return {}
+    end
+    local ok, spectators = pcall(panel.getSpectators, panel)
+    return ok and type(spectators) == 'table' and spectators or {}
+end
+
+local function rememberBattleAge(creature)
+    local ok, id = battleCall(creature, 'getId')
+    if not ok or type(id) ~= 'number' then
+        return nil
+    end
+    if battleAges[id] == nil then
+        nextBattleAge = nextBattleAge + 1
+        battleAges[id] = nextBattleAge
+    end
+    return battleAges[id]
+end
+
+local function battleCreatureType(creature)
+    if battleBoolean(creature, 'isPlayer') then
+        return 'player'
+    elseif battleBoolean(creature, 'isNpc') then
+        return 'npc'
+    elseif battleBoolean(creature, 'isSummon') then
+        return 'summon'
+    end
+    local masterOk, masterId = battleCall(creature, 'getMasterId')
+    if masterOk and type(masterId) == 'number' and masterId > 0 then
+        return 'summon'
+    elseif battleBoolean(creature, 'isMonster') then
+        return 'monster'
+    end
+    return 'creature'
+end
+
+local function battleDistance(left, right)
+    if not left or not right then
+        return nil
+    end
+    local x = math.abs((left.x or 0) - (right.x or 0))
+    local y = math.abs((left.y or 0) - (right.y or 0))
+    return math.max(0, x - 1) + math.max(0, y - 1)
+end
+
+local function battleSortRows(rows, sortType, sortOrder)
+    table.sort(rows, function(left, right)
+        local leftValue
+        local rightValue
+        if sortType == 'distance' then
+            leftValue, rightValue = left.distance or 0, right.distance or 0
+        elseif sortType == 'health' then
+            leftValue, rightValue =
+                left.healthPercent or 0, right.healthPercent or 0
+        elseif sortType == 'age' then
+            leftValue, rightValue = left.age or 0, right.age or 0
+        else
+            leftValue, rightValue =
+                (left.name or ''):lower(), (right.name or ''):lower()
+        end
+        if leftValue == rightValue then
+            if sortOrder == 'D' then
+                return left.id > right.id
+            end
+            return left.id < right.id
+        end
+        if sortOrder == 'D' then
+            return leftValue > rightValue
+        end
+        return leftValue < rightValue
+    end)
+end
+
+function getBattleSnapshot()
+    local online = battleSemanticAvailable and g_game.isOnline() == true
+    local player = online and g_game.getLocalPlayer() or nil
+    local positionOk, playerPosition = battleCall(player, 'getPosition')
+    local available = online and player ~= nil and positionOk and
+        playerPosition ~= nil
+    local mainInstance = BattleListManager:getMainInstance()
+    local sortType = mainInstance and mainInstance:getSortType() or
+        (type(getSortType) == 'function' and getSortType() or 'name')
+    local sortOrder = mainInstance and mainInstance:getSortOrder() or
+        (type(getSortOrder) == 'function' and getSortOrder() or 'A')
+    local snapshot = {
+        available = available,
+        revision = battleRevision,
+        sortType = sortType,
+        sortOrder = sortOrder,
+        filters = {},
+        rows = {}
+    }
+
+    for option in pairs(BATTLE_FILTERS) do
+        local enabled = mainInstance and mainInstance:getFilter(option) or
+            (type(getFilter) == 'function' and getFilter(option) or false)
+        snapshot.filters[option] = enabled == true
+    end
+    for _, option in ipairs(BATTLE_HIDE_OPTIONS) do
+        local button = mainInstance and mainInstance.hideButtons and
+            mainInstance.hideButtons[option] or nil
+        snapshot.filters[option] =
+            button and button:isChecked() == true or false
+    end
+    if not available then
+        return snapshot
+    end
+
+    local attacking = g_game.getAttackingCreature()
+    local following = g_game.getFollowingCreature()
+    local attackingOk, attackingId = battleCall(attacking, 'getId')
+    local followingOk, followingId = battleCall(following, 'getId')
+    for _, creature in ipairs(currentBattleSpectators()) do
+        local fits = false
+        if mainInstance then
+            local ok, result = pcall(
+                mainInstance.doCreatureFitFilters, mainInstance, creature)
+            fits = ok and result == true
+        elseif type(doCreatureFitFilters) == 'function' then
+            local ok, result = pcall(doCreatureFitFilters, creature)
+            fits = ok and result == true
+        end
+        if fits then
+            local idOk, id = battleCall(creature, 'getId')
+            local nameOk, name = battleCall(creature, 'getName')
+            local healthOk, health = battleCall(creature, 'getHealthPercent')
+            local creaturePositionOk, creaturePosition =
+                battleCall(creature, 'getPosition')
+            if idOk and nameOk and creaturePositionOk and
+                type(id) == 'number' and creaturePosition then
+                local outfitOk, outfit = battleCall(creature, 'getOutfit')
+                local visibleOk, visible = battleCall(creature, 'canBeSeen')
+                if type(canBeSeen) == 'function' then
+                    local rangeOk, rangeVisible = pcall(canBeSeen, creature)
+                    if rangeOk then
+                        visibleOk, visible = true, rangeVisible
+                    end
+                end
+                snapshot.rows[#snapshot.rows + 1] = {
+                    id = id,
+                    name = tostring(name or ''),
+                    type = battleCreatureType(creature),
+                    healthPercent = healthOk and health or nil,
+                    outfit = outfitOk and battleValueCopy(outfit) or nil,
+                    position = battleValueCopy(creaturePosition),
+                    distance = battleDistance(playerPosition, creaturePosition),
+                    age = rememberBattleAge(creature),
+                    currentTarget = attackingOk and attackingId == id or false,
+                    following = followingOk and followingId == id or false,
+                    visible = visibleOk and visible == true or false
+                }
+            end
+        end
+    end
+    battleSortRows(snapshot.rows, sortType, sortOrder)
+    return snapshot
+end
+
+function subscribeBattle(callback)
+    assert(type(callback) == 'function',
+        'battle callback must be a function')
+    nextBattleObserverId = nextBattleObserverId + 1
+    local observerId = nextBattleObserverId
+    battleObservers[observerId] = callback
+    local subscribed = true
+    return function()
+        if not subscribed then
+            return
+        end
+        subscribed = false
+        battleObservers[observerId] = nil
+    end
+end
+
+local function mergeBattleChange(pending, changeType, id, revision)
+    if pending.revision ~= nil and pending.type ~= changeType then
+        pending.type = 'batch'
+    elseif pending.revision == nil then
+        pending.type = changeType
+    end
+    pending.revision = revision
+    if id ~= nil and not pending.idSet[id] then
+        pending.idSet[id] = true
+        pending.ids[#pending.ids + 1] = id
+    end
+end
+
+local function newBattleChange(changeType, id, revision)
+    local pending = {
+        type = nil,
+        ids = {},
+        idSet = {},
+        revision = nil
+    }
+    mergeBattleChange(pending, changeType, id, revision)
+    return pending
+end
+
+function publishBattleChange(changeType, id)
+    battleRevision = battleRevision + 1
+    if battleDispatching then
+        for _, observer in ipairs(battleDispatchState.observers) do
+            if battleObservers[observer.id] == observer.callback then
+                mergeBattleChange(
+                    observer.pending, changeType, id, battleRevision)
+            end
+        end
+        return true
+    end
+
+    local observers = {}
+    for observerId, callback in pairs(battleObservers) do
+        observers[#observers + 1] = {
+            id = observerId,
+            callback = callback,
+            pending = newBattleChange(changeType, id, battleRevision)
+        }
+    end
+    table.sort(observers, function(left, right)
+        return left.id < right.id
+    end)
+    battleDispatchState = { observers = observers }
+    battleDispatching = true
+    local ok, dispatchError = pcall(function()
+        local hasPending = true
+        while hasPending do
+            hasPending = false
+            for _, observer in ipairs(observers) do
+                if battleObservers[observer.id] == observer.callback then
+                    local pending = observer.pending
+                    if pending.revision ~= nil then
+                        observer.pending = newBattleChange(nil, nil, nil)
+                        local ids = {}
+                        for index, changedId in ipairs(pending.ids) do
+                            ids[index] = changedId
+                        end
+                        local callbackOk, callbackError = pcall(
+                            observer.callback,
+                            cloneBattleSnapshot(getBattleSnapshot()), {
+                                type = pending.type,
+                                ids = ids,
+                                revision = pending.revision
+                            })
+                        if not callbackOk and g_logger and g_logger.error then
+                            g_logger.error(
+                                '[game_battle] battle observer failed: ' ..
+                                tostring(callbackError))
+                        end
+                    end
+                else
+                    observer.pending = newBattleChange(nil, nil, nil)
+                end
+                if observer.pending.revision ~= nil then
+                    hasPending = true
+                end
+            end
+        end
+    end)
+    battleDispatching = false
+    battleDispatchState = nil
+    if not ok then
+        error(dispatchError, 0)
+    end
+    return true
+end
+
+local function currentBattleCreature(id)
+    id = tonumber(id)
+    if not id or id ~= math.floor(id) or not g_game.isOnline() then
+        return nil
+    end
+    local present = false
+    for _, creature in ipairs(currentBattleSpectators()) do
+        local ok, creatureId = battleCall(creature, 'getId')
+        if ok and creatureId == id then
+            present = true
+            break
+        end
+    end
+    if not present then
+        return nil
+    end
+    local creature = g_map and type(g_map.getCreatureById) == 'function' and
+        g_map.getCreatureById(id) or nil
+    local ok, currentId = battleCall(creature, 'getId')
+    return ok and currentId == id and creature or nil
+end
+
+function attackBattleCreature(id)
+    local creature = currentBattleCreature(id)
+    if not creature then
+        return false
+    end
+    g_game.attack(creature)
+    return true
+end
+
+function followBattleCreature(id)
+    local creature = currentBattleCreature(id)
+    if not creature then
+        return false
+    end
+    g_game.follow(creature)
+    return true
+end
+
+function openBattleCreatureContext(id, position)
+    local creature = currentBattleCreature(id)
+    local interface = modules and modules.game_interface
+    if not creature or type(position) ~= 'table' or not interface or
+        type(interface.createThingMenu) ~= 'function' then
+        return false
+    end
+    interface.createThingMenu(position, nil, nil, creature)
+    return true
+end
+
+function toggleBattleOption(option)
+    local instance = BattleListManager:getMainInstance()
+    if not instance or type(option) ~= 'string' then
+        return false
+    end
+    local button = instance.hideButtons and instance.hideButtons[option]
+    local accepted = false
+    if button then
+        instance:onFilterButtonClick(button)
+        accepted = true
+    elseif BATTLE_FILTERS[option] ~= nil then
+        accepted = instance:setFilter(option) == true
+    end
+    if accepted then
+        publishBattleChange('filter')
+    end
+    return accepted
+end
+
+local battleSemanticCreatureCallbacks = {
+    onSkullChange = function(creature)
+        publishBattleChange('filter', creature and creature:getId() or nil)
+    end,
+    onEmblemChange = function(creature)
+        publishBattleChange('filter', creature and creature:getId() or nil)
+    end,
+    onOutfitChange = function(creature)
+        publishBattleChange('update', creature and creature:getId() or nil)
+    end,
+    onHealthPercentChange = function(creature)
+        publishBattleChange('health', creature and creature:getId() or nil)
+    end,
+    onPositionChange = function(creature)
+        publishBattleChange('position', creature and creature:getId() or nil)
+    end,
+    onAppear = function(creature)
+        rememberBattleAge(creature)
+        publishBattleChange('add', creature and creature:getId() or nil)
+    end,
+    onDisappear = function(creature)
+        local id = creature and creature:getId() or nil
+        if id ~= nil then
+            battleAges[id] = nil
+        end
+        publishBattleChange('remove', id)
+    end
+}
+
+local battleSemanticPlayerCallbacks = {
+    onPositionChange = function()
+        publishBattleChange('position')
+    end
+}
+
+local battleSemanticMapCallbacks = {
+    onZoomChange = function()
+        publishBattleChange('visibility')
+    end
+}
+
+function startBattleSemanticEvents()
+    if battleSemanticConnected then
+        return
+    end
+    battleSemanticAvailable = true
+    battleSemanticConnected = true
+    connect(Creature, battleSemanticCreatureCallbacks)
+    connect(LocalPlayer, battleSemanticPlayerCallbacks)
+    connect(UIMap, battleSemanticMapCallbacks)
+    for _, creature in ipairs(currentBattleSpectators()) do
+        rememberBattleAge(creature)
+    end
+    publishBattleChange('start')
+end
+
+function stopBattleSemanticEvents()
+    if not battleSemanticConnected then
+        battleSemanticAvailable = false
+        return
+    end
+    disconnect(Creature, battleSemanticCreatureCallbacks)
+    disconnect(LocalPlayer, battleSemanticPlayerCallbacks)
+    disconnect(UIMap, battleSemanticMapCallbacks)
+    battleSemanticConnected = false
+    battleSemanticAvailable = false
+    battleAges = {}
+    nextBattleAge = 0
+    publishBattleChange('end')
+end
+
 function BattleListManager:saveInstancesState()
     local instancesData = {}
     for id, instance in pairs(self.instances) do
@@ -1614,6 +2105,7 @@ function init()
     end
     
     if g_game.isOnline() then
+        startBattleSemanticEvents()
         battleWindow:setupOnStart()
     end
 end
@@ -1688,6 +2180,7 @@ function binaryInsert(tbl, value, comparator, ...)
 end
 
 function onGameStart()
+    startBattleSemanticEvents()
     battleWindow:setupOnStart() -- load character window configuration
 
     -- Update battle list title in case it was customized
@@ -1722,6 +2215,7 @@ function onGameStart()
 end
 
 function onGameEnd()
+    stopBattleSemanticEvents()
     -- Stop periodic auto-save
     BattleListManager:stopPeriodicSave()
     
@@ -2078,6 +2572,7 @@ function onAttack(creature) -- Update battleButton once you're attacking a targe
     end
 
     lastCreatureSelected = creature
+    publishBattleChange('target', creature and creature:getId() or nil)
 end
 
 function onFollow(creature) -- Update battleButton once you're following a target
@@ -2117,6 +2612,7 @@ function onFollow(creature) -- Update battleButton once you're following a targe
     end
     
     lastCreatureSelected = creature
+    publishBattleChange('follow', creature and creature:getId() or nil)
 end
 
 function onCreatureOutfitChange(creature, outfit, oldOutfit) -- Insert/Remove creature when it becomes visible/invisible
@@ -2563,6 +3059,7 @@ function toggle() -- Close/Open the battle window or Pressing Ctrl + B
 end
 
 function terminate() -- Terminating the Module (unload)
+    stopBattleSemanticEvents()
     -- Save battle list instances state before destroying
     BattleListManager:saveInstancesState()
     
