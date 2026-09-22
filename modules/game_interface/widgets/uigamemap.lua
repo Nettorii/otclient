@@ -92,7 +92,23 @@ function UIGameMap:onDrop(widget, mousePos)
     return true
 end
 
+local function isMobileV2Enabled()
+    return g_platform.isMobile() and modules.client_mobileui and
+        modules.client_mobileui.isV2Enabled()
+end
+
+local function mobileV2BrowserWindowIsUnfocused()
+    return isMobileV2Enabled() and g_window and g_window.hasFocus and
+        g_window.getPlatformType and
+        g_window.getPlatformType() == 'BROWSER-WEBGL' and
+        not g_window.hasFocus()
+end
+
 function UIGameMap:onMousePress()
+    if mobileV2BrowserWindowIsUnfocused() then
+        self:cancelPendingRelease()
+        return true
+    end
     if not self:isDragging() then
         self.allowNextRelease = true
     end
@@ -147,8 +163,7 @@ local function isEffectivelyInputEligible(widget)
 end
 
 local function mobileV2InputBlocksMap(gameMap, mousePosition)
-    if not g_platform.isMobile() or not modules.client_mobileui or
-        not modules.client_mobileui.isV2Enabled() then
+    if not isMobileV2Enabled() then
         return false
     end
 
@@ -175,6 +190,10 @@ local function mobileV2InputBlocksMap(gameMap, mousePosition)
 end
 
 function UIGameMap:onMouseRelease(mousePosition, mouseButton)
+    if mobileV2BrowserWindowIsUnfocused() then
+        self:cancelPendingRelease()
+        return true
+    end
     if not self.allowNextRelease then
         return true
     end

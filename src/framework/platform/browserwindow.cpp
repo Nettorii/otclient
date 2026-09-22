@@ -511,9 +511,20 @@ void BrowserWindow::handleFocusCallback(int eventType, const EmscriptenFocusEven
         eventType != EMSCRIPTEN_EVENT_BLUR)
         return;
 
-    const bool focused = eventType == EMSCRIPTEN_EVENT_FOCUS;
+    queueFocusChange(eventType == EMSCRIPTEN_EVENT_FOCUS);
+}
+
+void BrowserWindow::queueFocusChange(const bool focused) {
+    // This callback runs before a later DOM touchend. Invalidate the wall-clock
+    // long-touch state immediately so touchend cannot synthesize a new right
+    // press while the dispatcher is still processing focus loss.
+    if (!focused)
+        m_touchStartTicks = -1;
+
     g_dispatcher.addEvent([this, focused] {
         releaseAllKeys();
+        if (!focused)
+            m_mouseButtonStates = 0;
         setFocused(focused);
     });
 }
@@ -521,10 +532,7 @@ void BrowserWindow::handleFocusCallback(int eventType, const EmscriptenFocusEven
 void BrowserWindow::handleVisibilityChangeCallback(const EmscriptenVisibilityChangeEvent* event) {
     if (!event->hidden)
         return;
-    g_dispatcher.addEvent([this] {
-        releaseAllKeys();
-        setFocused(false);
-    });
+    queueFocusChange(false);
 }
 
 void BrowserWindow::swapBuffers() {

@@ -80,6 +80,8 @@ public:
 protected:
     int internalLoadMouseCursor(const ImagePtr& image, const Point& hotSpot) override;
 private:
+    void queueFocusChange(bool focused);
+
     bool m_running;
     ticks_t m_touchStartTicks{ -1 }; // wall clock (stdext::millis) at touchstart, -1 when moved/released
     bool m_usingTouch = false;
