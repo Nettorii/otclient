@@ -8,6 +8,8 @@ local drawerHandle
 local statusAdapter
 local actionAdapter
 local hotbarAdapter
+local drawerHost
+local placeholderUnregisters = {}
 local unsubscribeProfile
 local layoutEvent
 local windowCallbacks
@@ -204,10 +206,12 @@ end
 
 local function synchronizeInputTargets()
   local enabled = actionsAreActive()
-  for _, widget in ipairs({ menu, drawerHandle }) do
-    if widget then
-      widget:setEnabled(enabled)
-    end
+  if menu then
+    menu:setEnabled(enabled)
+  end
+  if drawerHandle then
+    drawerHandle:setEnabled(
+      enabled and drawerHost ~= nil and drawerHost:hasViews())
   end
 end
 
@@ -245,6 +249,24 @@ local function configureInputTarget(widget)
   widget.onMouseRelease = function(_, _, mouseButton)
     return mouseButton == (MouseLeftButton or 1) or
       mouseButton == (MouseRightButton or 2)
+  end
+end
+
+local function configureDrawerHandle(widget)
+  widget.onMousePress = function(_, _, mouseButton)
+    return mouseButton ~= (MouseLeftButton or 1)
+  end
+  widget.onMouseMove = function()
+    return true
+  end
+  widget.onMouseRelease = function(target, position, mouseButton)
+    if mouseButton ~= (MouseLeftButton or 1) then
+      return true
+    end
+    return UIButton.onMouseRelease(target, position, mouseButton)
+  end
+  widget.onClick = function()
+    return actionAdapter and actionAdapter:toggleDrawer() or false
   end
 end
 
@@ -435,6 +457,9 @@ end
 
 local function onGameEnd()
   cancelOwnedGestures()
+  if drawerHost then
+    drawerHost:close()
+  end
   if statusAdapter then
     statusAdapter:onGameEnd()
   end
@@ -483,7 +508,79 @@ function registerDrawerHandler(handler)
   return actionAdapter:registerDrawerHandler(handler)
 end
 
+function registerDrawerView(id, descriptor)
+  if not drawerHost then
+    return false
+  end
+  return drawerHost:register(id, descriptor)
+end
+
+function openDrawer(id)
+  return drawerHost and drawerHost:open(id) or false
+end
+
+function closeDrawer()
+  return drawerHost and drawerHost:close() or false
+end
+
+function getOpenDrawerId()
+  return drawerHost and drawerHost:getOpenId() or nil
+end
+
+local function registerPlaceholderDrawerViews()
+  local views = {
+    { id = 'inventory', title = 'Inventory' },
+    { id = 'character', title = 'Character' },
+    { id = 'minimap', title = 'Minimap' },
+    { id = 'battle', title = 'Battle' },
+    { id = 'vip', title = 'VIP' },
+    { id = 'settings', title = 'Settings' }
+  }
+
+  for _, view in ipairs(views) do
+    local viewId = view.id
+    local viewTitle = view.title
+    local content
+    local unregister = registerDrawerView(viewId, {
+      title = viewTitle,
+      icon = '',
+      create = function(parent)
+        content = g_ui.createWidget('Panel', parent)
+        content:setWidth(math.max(0, parent:getWidth()))
+        content:setHeight(96)
+        local label = g_ui.createWidget('Label', content)
+        label:setText(viewTitle)
+        label:setColor('#dbe6ee')
+        label:setTextAlign(AlignCenter)
+        label:setRect({
+          x = 0,
+          y = 0,
+          width = math.max(0, parent:getWidth()),
+          height = 96
+        })
+        label:setPhantom(true)
+        return content
+      end,
+      onShow = function()
+      end,
+      onHide = function()
+      end,
+      destroy = function()
+        if content and not content:isDestroyed() then
+          content:destroy()
+        end
+        content = nil
+      end
+    })
+    if type(unregister) == 'function' then
+      placeholderUnregisters[#placeholderUnregisters + 1] = unregister
+    end
+  end
+end
+
 function runSelfTests()
+  MobileDrawer.runSelfTests()
+
   local function insideUsable(geometry, profile)
     local left = profile.safe.left
     local top = profile.safe.top
@@ -612,6 +709,7 @@ function init()
   end
 
   g_ui.importStyle('styles.otui')
+  g_ui.importStyle('drawer.otui')
   hud = g_ui.displayUI('game_mobileui')
   status = hud:getChildById('status')
   menu = hud:getChildById('menu')
@@ -620,7 +718,6 @@ function init()
   actions = hud:getChildById('actions')
   drawerHandle = hud:getChildById('drawerHandle')
   configureInputTarget(menu)
-  configureInputTarget(drawerHandle)
 
   if MobileStatus then
     statusAdapter = MobileStatus.create()
@@ -638,6 +735,16 @@ function init()
     })
     hotbarAdapter:bind(hotbar)
   end
+
+  drawerHost = MobileDrawer.create({
+    cancelGestures = cancelOwnedGestures,
+    registerActionHandler = function(handler)
+      return actionAdapter:registerDrawerHandler(handler)
+    end,
+    onAvailabilityChange = synchronizeInputTargets
+  })
+  configureDrawerHandle(drawerHandle)
+  registerPlaceholderDrawerViews()
 
   gameActive = false
   controlsFit = false
@@ -669,6 +776,12 @@ function terminate()
   if not hud then
     return
   end
+
+  if drawerHost then
+    drawerHost:terminate()
+    drawerHost = nil
+  end
+  placeholderUnregisters = {}
 
   disconnect(g_game, {
     onGameStart = onGameStart,

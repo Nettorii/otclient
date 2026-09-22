@@ -1,0 +1,119 @@
+MobileDrawerNavigationButton < UIButton
+  width: 72
+  height: 48
+  min-width: 48
+  background-color: #101c29ee
+  border-width: 1
+  border-color: #7891a455
+  color: #dbe6ee
+  font: verdana-11px-antialised
+  text-align: bottom
+  focusable: false
+  phantom: false
+  $hover:
+    background-color: #17283aee
+    border-color: #8fa9ba88
+  $pressed:
+    background-color: #203a51ee
+    border-color: #9fc0d699
+  $disabled:
+    background-color: #203a51ee
+    border-color: #9fc0d699
+    color: #ffffff
+
+MobileDrawerViewHost < Panel
+  min-height: 1
+  focusable: false
+  phantom: false
+
+MobileDrawerBackdrop < Panel
+  id: drawerBackdrop
+  anchors.fill: parent
+  background-color: #02060aaa
+  focusable: true
+  phantom: false
+
+  Panel
+    id: drawerSurface
+    background-color: #0b131ef5
+    border-width: 1
+    border-color: #7891a477
+    clipping: true
+    focusable: false
+    phantom: false
+
+    Panel
+      id: drawerHeader
+      anchors.left: parent.left
+      anchors.right: parent.right
+      anchors.top: parent.top
+      height: 48
+      background-color: #152333f5
+      border-width-bottom: 1
+      border-color-bottom: #7891a466
+      phantom: false
+
+      Label
+        id: drawerTitle
+        anchors.fill: parent
+        margin-left: 14
+        margin-right: 14
+        color: #e5edf4
+        font: verdana-11px-antialised
+        text-align: left
+        text-wrap: true
+        phantom: true
+
+    UIScrollArea
+      id: drawerContent
+      anchors.left: parent.left
+      anchors.right: drawerContentScrollBar.left
+      anchors.top: drawerHeader.bottom
+      anchors.bottom: drawerNavigation.top
+      margin: 8
+      margin-right: 4
+      vertical-scrollbar: drawerContentScrollBar
+      clipping: true
+      phantom: false
+      layout:
+        type: verticalBox
+        spacing: 6
+
+    VerticalScrollBar
+      id: drawerContentScrollBar
+      anchors.top: drawerHeader.bottom
+      anchors.bottom: drawerNavigation.top
+      anchors.right: parent.right
+      margin-top: 8
+      margin-right: 4
+      margin-bottom: 8
+      step: 48
+      pixels-scroll: true
+
+    UIScrollArea
+      id: drawerNavigation
+      anchors.left: parent.left
+      anchors.right: parent.right
+      anchors.bottom: parent.bottom
+      height: 48
+      padding-left: 4
+      padding-right: 4
+      background-color: #101c29f5
+      border-width-top: 1
+      border-color-top: #7891a455
+      horizontal-scrollbar: drawerNavigationScrollBar
+      clipping: true
+      phantom: false
+      layout:
+        type: horizontalBox
+        spacing: 4
+
+    HorizontalScrollBar
+      id: drawerNavigationScrollBar
+      anchors.left: parent.left
+      anchors.right: parent.right
+      anchors.bottom: parent.bottom
+      height: 0
+      visible: false
+      step: 48
+      pixels-scroll: true
