@@ -231,8 +231,18 @@ end
 
 function Adapter:updateEnabled()
   local enabled = self:_active()
+  if not enabled then
+    self:cancelGestures()
+  end
   for _, button in pairs(self.buttons or {}) do
     button:setEnabled(enabled)
+  end
+end
+
+function Adapter:cancelGestures()
+  for _, button in pairs(self.buttons or {}) do
+    button.mobileActionPressedAt = nil
+    button.mobileActionSuppress = true
   end
 end
 
@@ -294,6 +304,7 @@ function Adapter:onGameStart()
 end
 
 function Adapter:onGameEnd()
+  self:cancelGestures()
   if self.targetConnected then
     self.disconnect(self.game, self.gameCallbacks)
   end

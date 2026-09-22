@@ -201,6 +201,46 @@ local function synchronizeHotbar()
   end
 end
 
+local function synchronizeInputTargets()
+  local enabled = actionsAreActive()
+  for _, widget in ipairs({ menu, drawerHandle }) do
+    if widget then
+      widget:setEnabled(enabled)
+    end
+  end
+end
+
+local function cancelOwnedGestures()
+  local joystick = modules.game_joystick
+  if joystick and joystick.cancelGesture then
+    joystick.cancelGesture()
+  end
+  if actionAdapter and actionAdapter.cancelGestures then
+    actionAdapter:cancelGestures()
+  end
+  if hotbarAdapter and hotbarAdapter.cancelGestures then
+    hotbarAdapter:cancelGestures()
+  end
+  local shortcuts = modules.game_shortcuts
+  if shortcuts and shortcuts.resetShortcuts then
+    shortcuts.resetShortcuts()
+  end
+end
+
+local function configureInputTarget(widget)
+  widget.onMousePress = function(_, _, mouseButton)
+    return mouseButton == (MouseLeftButton or 1) or
+      mouseButton == (MouseRightButton or 2)
+  end
+  widget.onMouseMove = function()
+    return true
+  end
+  widget.onMouseRelease = function(_, _, mouseButton)
+    return mouseButton == (MouseLeftButton or 1) or
+      mouseButton == (MouseRightButton or 2)
+  end
+end
+
 local function applyComputedLayout(layout)
   if not hud or hud:isDestroyed() then
     return
@@ -251,6 +291,7 @@ local function applyComputedLayout(layout)
   setControlsVisible(true)
   synchronizeActions()
   synchronizeHotbar()
+  synchronizeInputTargets()
 end
 
 function applyProfile(profile)
@@ -258,6 +299,7 @@ function applyProfile(profile)
     return false
   end
 
+  cancelOwnedGestures()
   if hotbarAdapter then
     hotbarAdapter:applyProfile(profile)
   end
@@ -280,6 +322,9 @@ function setControlsVisible(visible)
   end
 
   visible = visible == true and gameActive and controlsFit
+  if not visible then
+    cancelOwnedGestures()
+  end
   hud:setEnabled(visible)
   if hud:isVisible() ~= visible then
     hud:setVisible(visible)
@@ -287,6 +332,7 @@ function setControlsVisible(visible)
   synchronizeJoystick()
   synchronizeActions()
   synchronizeHotbar()
+  synchronizeInputTargets()
   return true
 end
 
@@ -335,19 +381,23 @@ function foregroundOwner:onForegroundGained()
     synchronizeJoystick()
     synchronizeActions()
     synchronizeHotbar()
+    synchronizeInputTargets()
     releaseGameplayForeground()
     return
   end
   synchronizeJoystick()
   synchronizeActions()
   synchronizeHotbar()
+  synchronizeInputTargets()
   raiseGameplayHud()
 end
 
 function foregroundOwner:onForegroundLost()
+  cancelOwnedGestures()
   synchronizeJoystick()
   synchronizeActions()
   synchronizeHotbar()
+  synchronizeInputTargets()
 end
 
 local function onGameStart()
@@ -375,6 +425,7 @@ local function onGameStart()
 end
 
 local function onGameEnd()
+  cancelOwnedGestures()
   if statusAdapter then
     statusAdapter:onGameEnd()
   end
@@ -559,6 +610,8 @@ function init()
   hotbar = hud:getChildById('hotbar')
   actions = hud:getChildById('actions')
   drawerHandle = hud:getChildById('drawerHandle')
+  configureInputTarget(menu)
+  configureInputTarget(drawerHandle)
 
   if MobileStatus then
     statusAdapter = MobileStatus.create()

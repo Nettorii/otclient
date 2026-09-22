@@ -102,8 +102,37 @@ function UIGameMap:onMouseMove()
     return false
 end
 
+local function mobileV2InputBlocksMap(gameMap, mousePosition)
+    if not g_platform.isMobile() or not modules.client_mobileui or
+        not modules.client_mobileui.isV2Enabled() then
+        return false
+    end
+
+    local state = modules.client_mobileui.getForeground()
+    if state ~= 'gameplay' then
+        return true
+    end
+
+    local top = g_ui.getRootWidget():recursiveGetChildByPos(mousePosition, false)
+    while top do
+        if top == gameMap then
+            return false
+        end
+        top = top:getParent()
+    end
+    return true
+end
+
 function UIGameMap:onMouseRelease(mousePosition, mouseButton)
     if not self.allowNextRelease then
+        return true
+    end
+
+    -- Browser touch releases propagate through every eligible widget under the
+    -- pointer. A gameplay control, drawer, chat, reconnecting screen, or modal
+    -- owns that release ahead of the map even when its own handler declines it.
+    if mobileV2InputBlocksMap(self, mousePosition) then
+        self.allowNextRelease = false
         return true
     end
 

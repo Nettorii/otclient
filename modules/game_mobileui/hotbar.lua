@@ -246,6 +246,7 @@ function Adapter:_rebuildSlots()
   if not self.panel or self.slotCount == 0 then
     return
   end
+  self:cancelGestures()
   self:_cancelCooldownRefresh()
   self.panel:destroyChildren()
   self.slots = {}
@@ -280,11 +281,23 @@ end
 
 function Adapter:updateEnabled()
   local enabled = self:_active()
+  if not enabled then
+    self:cancelGestures()
+  end
   if self.panel then
     self.panel:setEnabled(enabled)
   end
   for _, slot in ipairs(self.slots) do
     slot:setEnabled(enabled)
+  end
+end
+
+function Adapter:cancelGestures()
+  for _, slot in ipairs(self.slots) do
+    slot.mobileHotbarPressX = nil
+    slot.mobileHotbarPressedAt = nil
+    slot.mobileHotbarSwiped = false
+    slot.mobileHotbarSuppress = true
   end
 end
 
@@ -316,6 +329,7 @@ end
 
 function Adapter:onGameEnd()
   self.running = false
+  self:cancelGestures()
   self:_cancelCooldownRefresh()
   if self.unsubscribe then
     self.unsubscribe()
