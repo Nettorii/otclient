@@ -43,11 +43,37 @@ function View:_closeOwnedModal()
   if not session then
     return
   end
+  self.modalGeneration = self.modalGeneration + 1
   self.modalSession = nil
+  session.cancelled = true
   if session.handle and session.handle:isOpen() then
     session.handle:close()
   elseif session.body and not session.body:isDestroyed() then
     session.body:destroy()
+  end
+end
+
+function View:_fitModalBody(body, session, generation)
+  local function fit()
+    if self.modalSession ~= session or
+        self.modalGeneration ~= generation or
+        not body or body:isDestroyed() then
+      return
+    end
+    local bodyY = type(body.getY) == 'function' and body:getY() or 0
+    local bottom = 0
+    for _, child in ipairs(body:getChildren()) do
+      local childY = type(child.getY) == 'function' and child:getY() or bodyY
+      local margin = type(child.getMarginBottom) == 'function' and
+        (tonumber(child:getMarginBottom()) or 0) or 0
+      bottom = math.max(bottom, childY - bodyY + child:getHeight() + margin)
+    end
+    body:setHeight(math.max(ROW_HEIGHT, bottom))
+  end
+  if type(addEvent) == 'function' then
+    addEvent(fit)
+  else
+    fit()
   end
 end
 
@@ -59,75 +85,113 @@ function View:_showOwnedModal(title, body, handlers)
     return nil
   end
   handlers = handlers or {}
+  self.modalGeneration = self.modalGeneration + 1
+  local generation = self.modalGeneration
+  local current = self.modalSession
+  if current and current.handle and current.handle:isOpen() and
+      type(current.handle.setBody) == 'function' and
+      current.handle.title and
+      type(current.handle.title.setText) == 'function' then
+    current.generation = generation
+    current.body = body
+    current.submitted = false
+    current.cancelled = false
+    current.onEnter = handlers.onEnter
+    current.onClose = handlers.onClose
+    current.handle.title:setText(title)
+    current.handle:setBody(body)
+    self:_fitModalBody(body, current, generation)
+    return current, generation
+  end
+  self:_closeOwnedModal()
+  self.modalGeneration = self.modalGeneration + 1
+  generation = self.modalGeneration
   local session = {
     body = body,
-    opening = true,
+    generation = generation,
+    onEnter = handlers.onEnter,
+    onClose = handlers.onClose,
     submitted = false
   }
   self.modalSession = session
-  local function close()
-    if session.handle and session.handle:isOpen() then
-      session.handle:close()
+  function session.close(expectedGeneration)
+    expectedGeneration = expectedGeneration or session.generation
+    if self.modalSession == session and
+        self.modalGeneration == expectedGeneration and
+        session.generation == expectedGeneration then
+      self:_closeOwnedModal()
     end
   end
-  session.close = close
-  session.handle = mobileUi.showModal({
+  local handle = mobileUi.showModal({
     title = title,
     body = body,
     buttons = {},
-    onEnter = handlers.onEnter,
-    onEscape = close,
+    onEnter = function()
+      if self.modalSession == session and session.onEnter then
+        return session.onEnter()
+      end
+      return true
+    end,
+    onEscape = function() session.close(session.generation) end,
     onClose = function()
       if self.modalSession == session then
         self.modalSession = nil
       end
-      if handlers.onClose then
-        handlers.onClose()
+      if session.onClose then
+        session.onClose()
       end
     end
   })
-  session.opening = false
-  if not session.handle or not session.handle:isOpen() then
+  session.handle = handle
+  if session.cancelled and handle and handle:isOpen() then
+    handle:close()
+  end
+  if not handle or not handle:isOpen() then
     if self.modalSession == session then
       self.modalSession = nil
     end
+  else
+    self:_fitModalBody(body, session, generation)
   end
-  return session
+  return session, generation
 end
 
-function View:_runModalAction(session, callback)
-  if not session or session.submitted then
+function View:_runModalAction(session, generation, callback)
+  if not session or self.modalSession ~= session or
+      self.modalGeneration ~= generation or
+      session.generation ~= generation or session.submitted then
     return true
   end
   session.submitted = true
   if callback() == false then
-    session.submitted = false
-  else
-    session.close()
+    if self.modalSession == session and session.generation == generation then
+      session.submitted = false
+    end
+  elseif self.modalSession == session and session.generation == generation then
+    session.close(generation)
   end
   return true
 end
 
 function View:_showActionSheet(title, actions)
   local body = g_ui.createWidget('MobileVipActionSheet')
-  body:setHeight(math.max(ROW_HEIGHT, (#actions + 1) * ROW_HEIGHT))
-  local session
+  local session, generation
   for index, action in ipairs(actions) do
     local button = g_ui.createWidget('MobileVipAction', body)
     button:setId('vipAction_' .. tostring(action.id or index))
     button:setText(action.text)
     button.onClick = function()
-      return self:_runModalAction(session, action.callback)
+      return self:_runModalAction(session, generation, action.callback)
     end
   end
   local cancel = g_ui.createWidget('MobileVipAction', body)
   cancel:setId('vipAction_cancel')
   cancel:setText(tr('Cancel'))
   cancel.onClick = function()
-    if session then session.close() end
+    if session then session.close(generation) end
     return true
   end
-  session = self:_showOwnedModal(title, body)
+  session, generation = self:_showOwnedModal(title, body)
   return session ~= nil
 end
 
@@ -162,19 +226,19 @@ function View:_showNameForm(title, fieldLabel, initialValue, submit)
   local name = addTextField(body, 'formName', initialValue)
   local save = addFormAction(body, 'formSave', tr('Save'))
   local cancel = addFormAction(body, 'formCancel', tr('Cancel'))
-  body:setHeight(200)
-  local session
+  local session, generation
   local function saveForm()
-    return self:_runModalAction(session, function()
+    return self:_runModalAction(session, generation, function()
       return submit(name:getText())
     end)
   end
   save.onClick = saveForm
   cancel.onClick = function()
-    if session then session.close() end
+    if session then session.close(generation) end
     return true
   end
-  session = self:_showOwnedModal(title, body, { onEnter = saveForm })
+  session, generation =
+    self:_showOwnedModal(title, body, { onEnter = saveForm })
   if session and type(name.focus) == 'function' then
     name:focus()
   end
@@ -237,7 +301,6 @@ function View:_showEditVipForm(id)
   for _, groupId in ipairs(entry.groups or {}) do
     selectedGroups[tostring(groupId)] = true
   end
-  local groupButtons = 0
   if snapshot.groupsAvailable then
     addLabel(body, 'formGroupsLabel', tr('Groups'))
     for _, group in ipairs(snapshot.groups) do
@@ -255,16 +318,14 @@ function View:_showEditVipForm(id)
         updateGroup()
         return true
       end
-      groupButtons = groupButtons + 1
     end
   end
 
   local save = addFormAction(body, 'formSave', tr('Save'))
   local cancel = addFormAction(body, 'formCancel', tr('Cancel'))
-  body:setHeight(56 * (7 + groupButtons))
-  local session
+  local session, generation
   local function saveForm()
-    return self:_runModalAction(session, function()
+    return self:_runModalAction(session, generation, function()
       local groups = {}
       for _, group in ipairs(self.vip.getVipSnapshot().groups or {}) do
         if selectedGroups[tostring(group.id)] then
@@ -277,10 +338,10 @@ function View:_showEditVipForm(id)
   end
   save.onClick = saveForm
   cancel.onClick = function()
-    if session then session.close() end
+    if session then session.close(generation) end
     return true
   end
-  session = self:_showOwnedModal(
+  session, generation = self:_showOwnedModal(
     tr('Edit %s', entry.name), body, { onEnter = saveForm })
   return session ~= nil
 end
@@ -504,6 +565,9 @@ end
 
 function View:_render(snapshot)
   self.snapshot = snapshot
+  if not snapshot or snapshot.available ~= true then
+    self:_closeOwnedModal()
+  end
   self:_releaseDynamicGestures()
   local list = self:_widget('vipGroupsList')
   list:destroyChildren()
@@ -567,9 +631,7 @@ function View:onHide()
     self.unsubscribe = nil
   end
   self:_releaseDynamicGestures()
-  if self.modalSession and not self.modalSession.opening then
-    self:_closeOwnedModal()
-  end
+  self:_closeOwnedModal()
 end
 
 function View:destroy()
@@ -587,6 +649,7 @@ function MobileVip.createDescriptor(options)
   local view = setmetatable({
     vip = options.vip or modules.game_viplist,
     mobileUi = options.mobileUi,
+    modalGeneration = 0,
     dynamicGestureUnbinds = {}
   }, View)
   return {

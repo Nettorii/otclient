@@ -1483,6 +1483,26 @@ function BattleListInstance:isHidingFilters()
     return settings['hidingFilters']
 end
 
+local function restoreDefaultDisplayTimeSort(instance)
+    local filters = instance:loadFilters()
+    for filterName, isActive in pairs(filters) do
+        if isActive and
+            (filterName:find("sortAscBy") or
+                filterName:find("sortDescBy")) then
+            return false
+        end
+    end
+
+    filters["sortAscByDisplayTime"] = true
+    g_settings.mergeNode(
+        instance:getSettingsKey(), { ['filters'] = filters })
+    scheduleEvent(function()
+        instance:checkCreatures()
+    end, 100)
+    publishBattleChange('sort')
+    return true
+end
+
 function BattleListInstance:onOpen()
     -- Ensure events are connected when opening any battle list instance
     if g_game.isOnline() then
@@ -1490,25 +1510,7 @@ function BattleListInstance:onOpen()
     end
     
     -- Ensure default filters are applied for new instances
-    local filters = self:loadFilters()
-    local hasAnySortFilter = false
-    
-    -- Check if any sort filter is already active
-    for filterName, isActive in pairs(filters) do
-        if isActive and (filterName:find("sortAscBy") or filterName:find("sortDescBy")) then
-            hasAnySortFilter = true
-            break
-        end
-    end
-    
-    -- If no sort filter is active, apply the default
-    if not hasAnySortFilter then
-        filters["sortAscByDisplayTime"] = true
-        g_settings.mergeNode(self:getSettingsKey(), { ['filters'] = filters })
-        scheduleEvent(function()
-            self:checkCreatures()
-        end, 100)
-    end
+    restoreDefaultDisplayTimeSort(self)
 end
 
 function BattleListInstance:onClose()
@@ -3045,25 +3047,7 @@ function onOpen()
     -- Ensure default filters are applied for the main battle list
     local mainInstance = BattleListManager.instances[0]
     if mainInstance then
-        local filters = mainInstance:loadFilters()
-        local hasAnySortFilter = false
-        
-        -- Check if any sort filter is already active
-        for filterName, isActive in pairs(filters) do
-            if isActive and (filterName:find("sortAscBy") or filterName:find("sortDescBy")) then
-                hasAnySortFilter = true
-                break
-            end
-        end
-        
-        -- If no sort filter is active, apply the default
-        if not hasAnySortFilter then
-            filters["sortAscByDisplayTime"] = true
-            g_settings.mergeNode(mainInstance:getSettingsKey(), { ['filters'] = filters })
-            scheduleEvent(function()
-                mainInstance:checkCreatures()
-            end, 100)
-        end
+        restoreDefaultDisplayTimeSort(mainInstance)
     end
 end
 

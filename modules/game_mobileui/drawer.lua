@@ -867,6 +867,44 @@ function Host:_restorePreviousForeground()
   return true
 end
 
+function Host:_suspendForModal(owner)
+  if not self.active or not owner then
+    return false
+  end
+  self.suspensionGeneration = self.suspensionGeneration + 1
+  self.suspension = {
+    record = self.active,
+    transition = self.transition,
+    generation = self.suspensionGeneration,
+    modalOwner = owner
+  }
+  if self.backdrop and not self.backdrop:isDestroyed() then
+    self.backdrop:setEnabled(false)
+    self.backdrop:hide()
+  end
+  return true
+end
+
+function Host:_resumeFromModal()
+  local suspension = self.suspension
+  self.suspension = nil
+  if not suspension or self.terminated or self.closing or
+      self.active ~= suspension.record or
+      self.transition ~= suspension.transition or
+      suspension.record.finalized or suspension.record.cleanupRequested or
+      self.registry[suspension.record.entry.id] ~= suspension.record.entry then
+    self:_restorePreviousForeground()
+    return false
+  end
+  if self.backdrop and not self.backdrop:isDestroyed() then
+    self.backdrop:setEnabled(true)
+    self.backdrop:show()
+    self.backdrop:raise()
+    self.backdrop:focus()
+  end
+  return true
+end
+
 function Host:_acquireForeground()
   if self:_ownsForeground() then
     return true
@@ -1024,6 +1062,7 @@ function Host:close()
   self.transition = self.transition + 1
   local transition = self.transition
   self.closing = true
+  self.suspension = nil
   self.cancelGestures()
   self:_detachPending()
   self:_detachActive()
@@ -1057,6 +1096,7 @@ function Host:terminate()
   end
   self.terminated = true
   self.transition = self.transition + 1
+  self.suspension = nil
   self.cancelGestures()
   self:_unbindAllGestureWidgets()
   self:_unbindBackdropHandlers(self.backdrop)
@@ -1105,15 +1145,20 @@ function MobileDrawer.create(options)
     gestureBindings = setmetatable({}, { __mode = 'k' }),
     callbackDepth = 0,
     transition = 0,
+    suspensionGeneration = 0,
     terminated = false
   }, Host)
 
   host.foregroundOwner = {}
-  function host.foregroundOwner:onForegroundGained()
+  function host.foregroundOwner:onForegroundGained(oldState)
     if host.acquiringForeground then
       return
     end
-    if host.terminated or not host.active then
+    if oldState == 'modal' then
+      host:_resumeFromModal()
+      return
+    end
+    if host.terminated or host.closing or not host.active then
       host:_restorePreviousForeground()
       return
     end
@@ -1122,8 +1167,11 @@ function MobileDrawer.create(options)
       host.backdrop:raise()
     end
   end
-  function host.foregroundOwner:onForegroundLost()
+  function host.foregroundOwner:onForegroundLost(nextState, nextOwner)
     host.cancelGestures()
+    if nextState == 'modal' and host:_suspendForModal(nextOwner) then
+      return
+    end
     if host.active or host.pending then
       host:close()
     end

@@ -7,8 +7,8 @@ vipInfo = {}
 -- @ Groups
 addGroupWindow = nil
 vipGroups = {}
-maxVipGroups = 5
-editableGroupCount = 1
+maxVipGroups = 0
+editableGroupCount = 0
 -- @
 
 local globalSettings = {
@@ -337,7 +337,9 @@ function editVipEntry(id, description, iconId, notify, groups)
         return false
     end
     iconId = tonumber(iconId)
-    if not iconId or iconId < VipIconFirst or iconId > VipIconLast then
+    if not iconId or iconId ~= iconId or
+        iconId ~= math.floor(iconId) or
+        iconId < VipIconFirst or iconId > VipIconLast then
         return false
     end
     local validGroups = {}
@@ -525,7 +527,14 @@ function controllerVip:onInit()
     end
 end
 
+local function resetVipGroupSessionState()
+    vipGroups = {}
+    maxVipGroups = 0
+    editableGroupCount = 0
+end
+
 function controllerVip:onTerminate()
+    resetVipGroupSessionState()
     if vipSemanticAvailable then
         vipSemanticAvailable = false
         publishVipChange('terminate')
@@ -542,6 +551,7 @@ function controllerVip:onTerminate()
 end
 
 function controllerVip:onGameStart()
+    resetVipGroupSessionState()
     vipSemanticAvailable = true
     if not g_game.getFeature(GameAdditionalVipInfo) then
         loadVipInfo()
@@ -559,6 +569,7 @@ function controllerVip:onGameStart()
 end
 
 function controllerVip:onGameEnd()
+    resetVipGroupSessionState()
     if vipSemanticAvailable then
         vipSemanticAvailable = false
         publishVipChange('end')
@@ -1325,9 +1336,9 @@ end
 
 -- @ groups
 function onVipGroupChange(vipGroupsArray, groupsAmountLeft)
-    vipGroups = vipGroupsArray
-    maxVipGroups = groupsAmountLeft
-    editableGroupCount = groupsAmountLeft
+    vipGroups = type(vipGroupsArray) == 'table' and vipGroupsArray or {}
+    maxVipGroups = math.max(0, math.floor(tonumber(groupsAmountLeft) or 0))
+    editableGroupCount = maxVipGroups
     refresh(false)
     publishVipChange('group')
 end

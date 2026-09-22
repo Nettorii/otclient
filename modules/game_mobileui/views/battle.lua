@@ -41,7 +41,9 @@ function View:_closeOwnedModal()
   if not session then
     return
   end
+  self.modalGeneration = self.modalGeneration + 1
   self.modalSession = nil
+  session.cancelled = true
   if session.handle and session.handle:isOpen() then
     session.handle:close()
   elseif session.body and not session.body:isDestroyed() then
@@ -58,11 +60,18 @@ function View:_showActionSheet(title, actions)
 
   local body = g_ui.createWidget('MobileBattleActionSheet')
   body:setHeight(math.max(ROW_HEIGHT, (#actions + 1) * ROW_HEIGHT))
-  local session = { body = body, opening = true, invoked = false }
+  self:_closeOwnedModal()
+  self.modalGeneration = self.modalGeneration + 1
+  local session = {
+    body = body,
+    generation = self.modalGeneration,
+    invoked = false
+  }
   self.modalSession = session
   local function close()
-    if session.handle and session.handle:isOpen() then
-      session.handle:close()
+    if self.modalSession == session and
+        self.modalGeneration == session.generation then
+      self:_closeOwnedModal()
     end
   end
   for index, action in ipairs(actions) do
@@ -70,7 +79,8 @@ function View:_showActionSheet(title, actions)
     button:setId('battleAction_' .. tostring(action.id or index))
     button:setText(action.text)
     button.onClick = function()
-      if session.invoked then
+      if self.modalSession ~= session or
+          self.modalGeneration ~= session.generation or session.invoked then
         return true
       end
       session.invoked = true
@@ -91,7 +101,7 @@ function View:_showActionSheet(title, actions)
     return true
   end
 
-  session.handle = mobileUi.showModal({
+  local handle = mobileUi.showModal({
     title = title,
     body = body,
     buttons = {},
@@ -102,8 +112,11 @@ function View:_showActionSheet(title, actions)
       end
     end
   })
-  session.opening = false
-  if not session.handle or not session.handle:isOpen() then
+  session.handle = handle
+  if session.cancelled and handle and handle:isOpen() then
+    handle:close()
+  end
+  if not handle or not handle:isOpen() then
     if self.modalSession == session then
       self.modalSession = nil
     end
@@ -258,6 +271,9 @@ end
 
 function View:_render(snapshot)
   self.snapshot = snapshot
+  if not snapshot or snapshot.available ~= true then
+    self:_closeOwnedModal()
+  end
   self:_releaseDynamicGestures()
   local rows = self:_widget('battleRows')
   rows:destroyChildren()
@@ -315,9 +331,7 @@ function View:onHide()
     self.unsubscribe = nil
   end
   self:_releaseDynamicGestures()
-  if self.modalSession and not self.modalSession.opening then
-    self:_closeOwnedModal()
-  end
+  self:_closeOwnedModal()
 end
 
 function View:destroy()
@@ -343,6 +357,7 @@ function MobileBattle.createDescriptor(options)
     battle = options.battle or modules.game_battle,
     mobileUi = options.mobileUi,
     now = options.now or wallMillis,
+    modalGeneration = 0,
     dynamicGestureUnbinds = {}
   }, View)
   return {
