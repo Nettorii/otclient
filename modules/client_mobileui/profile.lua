@@ -7,15 +7,18 @@ local function expectEqual(actual, expected, message)
 end
 
 function runSelfTests()
-  local compact = computeProfile(800, 390, 0, 0, 0, 0, 0, 'standard')
+  local compact = computeProfile(
+    800, 390, 0, 0, 0, 0, 0, 'compact', 'standard', 0.86)
   expectEqual(compact.class, 'compact', 'height 390 class')
   expectEqual(compact.target, 48, 'compact target')
   expectEqual(compact.joystick, 112, 'compact joystick')
   expectEqual(compact.hotbarSlots, 6, 'compact hotbar slots')
   expectEqual(compact.handedness, 'standard', 'standard handedness')
-  expectEqual(computeProfile(800, 390, 0, 0, 0, 0, 0, 'mirrored').handedness,
+  expectEqual(computeProfile(
+    800, 390, 0, 0, 0, 0, 0, 'compact', 'mirrored', 0.86).handedness,
     'mirrored', 'mirrored handedness')
-  expectEqual(computeProfile(800, 390, 0, 0, 0, 0, 0, 'invalid').handedness,
+  expectEqual(computeProfile(
+    800, 390, 0, 0, 0, 0, 0, 'compact', 'invalid', 0.86).handedness,
     'standard', 'invalid handedness fallback')
   expectEqual(computeProfile(800, 390, 0, 0, 0, 0, 0).handedness,
     'standard', 'missing handedness fallback')
@@ -128,10 +131,23 @@ function runSelfTests()
 end
 
 local PROFILE_VALUES = {
-  compact = { target = 48, joystick = 112, hotbarSlots = 6, drawerWidth = 280 },
-  comfortable = { target = 56, joystick = 136, hotbarSlots = 6, drawerWidth = 320 },
-  tablet = { target = 56, joystick = 160, hotbarSlots = 8, drawerWidth = 400 }
+  compact = {
+    target = 48, joystick = 112, hotbarSlots = 6, drawerWidth = 280,
+    margin = 4, gap = 4
+  },
+  comfortable = {
+    target = 56, joystick = 136, hotbarSlots = 6, drawerWidth = 320,
+    margin = 12, gap = 8
+  },
+  tablet = {
+    target = 56, joystick = 160, hotbarSlots = 8, drawerWidth = 400,
+    margin = 16, gap = 8
+  }
 }
+
+local MOBILE_OPACITY_DEFAULT = 0.86
+local MOBILE_OPACITY_MIN = 0.72
+local MOBILE_OPACITY_MAX = 1.0
 
 local function nonNegative(value)
   return math.max(0, tonumber(value) or 0)
@@ -150,8 +166,65 @@ local function sanitizeHandedness(handedness)
   return 'standard'
 end
 
+local function sanitizeControlPreset(preset)
+  if preset == 'compact' then
+    return 'compact'
+  end
+  return 'comfortable'
+end
+
+local function sanitizeOverlayOpacity(value)
+  value = tonumber(value)
+  if value == nil or value ~= value then
+    return MOBILE_OPACITY_DEFAULT
+  end
+  if value == math.huge then
+    return MOBILE_OPACITY_MAX
+  end
+  if value == -math.huge then
+    return MOBILE_OPACITY_MIN
+  end
+  return math.max(MOBILE_OPACITY_MIN, math.min(MOBILE_OPACITY_MAX, value))
+end
+
+local function overlayColor(baseColor, opacity)
+  local rgb = tostring(baseColor or '#000000'):match('^#?(%x%x%x%x%x%x)')
+  if not rgb then
+    rgb = '000000'
+  end
+  local alpha = math.floor(sanitizeOverlayOpacity(opacity) * 255 + 0.5)
+  return string.format('#%s%02x', rgb, alpha)
+end
+
+function applyOverlaySurface(widget, baseColor, profileOrOpacity)
+  if not widget or widget:isDestroyed() or
+      type(widget.setBackgroundColor) ~= 'function' then
+    return false
+  end
+  local opacity = type(profileOrOpacity) == 'table' and
+    profileOrOpacity.overlayOpacity or profileOrOpacity
+  widget:setBackgroundColor(overlayColor(baseColor, opacity))
+  return true
+end
+
+local function controlClassFor(viewportClass, preset)
+  if preset == 'compact' then
+    return 'compact'
+  end
+  if viewportClass == 'tablet' then
+    return 'tablet'
+  end
+  return 'comfortable'
+end
+
 computeProfile = function(width, height, safeLeft, safeTop, safeRight, safeBottom,
-    keyboardHeight, handedness)
+    keyboardHeight, controlPreset, handedness, overlayOpacity)
+  -- Preserve the pre-settings helper signature for existing profile contracts.
+  if (controlPreset == 'standard' or controlPreset == 'mirrored') and
+      handedness == nil then
+    handedness = controlPreset
+    controlPreset = nil
+  end
   width = nonNegative(width)
   height = nonNegative(height)
   safeLeft = nonNegative(safeLeft)
@@ -163,10 +236,15 @@ computeProfile = function(width, height, safeLeft, safeTop, safeRight, safeBotto
   local usableWidth = math.max(0, width - safeLeft - safeRight)
   local usableHeight = math.max(0, height - safeTop - safeBottom - keyboardHeight)
   local class = classForHeight(usableHeight)
-  local values = PROFILE_VALUES[class]
+  controlPreset = sanitizeControlPreset(controlPreset)
+  local controlClass = controlClassFor(class, controlPreset)
+  local values = PROFILE_VALUES[controlClass]
+  local viewportValues = PROFILE_VALUES[class]
 
   return {
     class = class,
+    controlClass = controlClass,
+    controlPreset = controlPreset,
     usableWidth = usableWidth,
     usableHeight = usableHeight,
     safe = {
@@ -177,16 +255,21 @@ computeProfile = function(width, height, safeLeft, safeTop, safeRight, safeBotto
     },
     keyboardHeight = keyboardHeight,
     handedness = sanitizeHandedness(handedness),
+    overlayOpacity = sanitizeOverlayOpacity(overlayOpacity),
     target = values.target,
     joystick = values.joystick,
     hotbarSlots = values.hotbarSlots,
-    drawerWidth = math.min(usableWidth, values.drawerWidth)
+    margin = values.margin,
+    gap = values.gap,
+    drawerWidth = math.min(usableWidth, viewportValues.drawerWidth)
   }
 end
 
 local function copyProfile(profile)
   return {
     class = profile.class,
+    controlClass = profile.controlClass,
+    controlPreset = profile.controlPreset,
     usableWidth = profile.usableWidth,
     usableHeight = profile.usableHeight,
     safe = {
@@ -197,9 +280,12 @@ local function copyProfile(profile)
     },
     keyboardHeight = profile.keyboardHeight,
     handedness = profile.handedness,
+    overlayOpacity = profile.overlayOpacity,
     target = profile.target,
     joystick = profile.joystick,
     hotbarSlots = profile.hotbarSlots,
+    margin = profile.margin,
+    gap = profile.gap,
     drawerWidth = profile.drawerWidth
   }
 end
@@ -207,6 +293,8 @@ end
 local function profilesEqual(left, right)
   return left and right and
     left.class == right.class and
+    left.controlClass == right.controlClass and
+    left.controlPreset == right.controlPreset and
     left.usableWidth == right.usableWidth and
     left.usableHeight == right.usableHeight and
     left.safe.left == right.safe.left and
@@ -215,9 +303,12 @@ local function profilesEqual(left, right)
     left.safe.bottom == right.safe.bottom and
     left.keyboardHeight == right.keyboardHeight and
     left.handedness == right.handedness and
+    left.overlayOpacity == right.overlayOpacity and
     left.target == right.target and
     left.joystick == right.joystick and
     left.hotbarSlots == right.hotbarSlots and
+    left.margin == right.margin and
+    left.gap == right.gap and
     left.drawerWidth == right.drawerWidth
 end
 
@@ -291,12 +382,28 @@ local function getWindowMetric(name)
   return getter()
 end
 
+local function readMobileOption(key, defaultValue, settingGetter)
+  local clientOptions = modules and modules.client_options
+  if clientOptions and type(clientOptions.getOption) == 'function' then
+    local value = clientOptions.getOption(key)
+    if value ~= nil then
+      return value
+    end
+  end
+  if g_settings and type(g_settings[settingGetter]) == 'function' then
+    return g_settings[settingGetter](key, defaultValue)
+  end
+  return defaultValue
+end
+
 local function readViewportMetrics()
   rootWidget = rootWidget or g_ui.getRootWidget()
-  local handedness = 'standard'
-  if g_settings and g_settings.getString then
-    handedness = g_settings.getString('mobileHandedness', 'standard')
-  end
+  local controlPreset = readMobileOption(
+    'mobileControlPreset', 'comfortable', 'getString')
+  local handedness = readMobileOption(
+    'mobileHandedness', 'standard', 'getString')
+  local overlayOpacity = readMobileOption(
+    'mobileOverlayOpacity', MOBILE_OPACITY_DEFAULT, 'getNumber')
   return rootWidget:getWidth(),
     rootWidget:getHeight(),
     getWindowMetric('getSafeAreaInsetLeft'),
@@ -304,7 +411,9 @@ local function readViewportMetrics()
     getWindowMetric('getSafeAreaInsetRight'),
     getWindowMetric('getSafeAreaInsetBottom'),
     getWindowMetric('getKeyboardHeight'),
-    handedness
+    controlPreset,
+    handedness,
+    overlayOpacity
 end
 
 local function bindViewportChanges(refresh)

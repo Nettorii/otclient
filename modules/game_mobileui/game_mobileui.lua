@@ -43,13 +43,39 @@ local function intersects(left, right)
 end
 
 local function profileSpacing(profile)
-  if profile.class == 'tablet' then
+  if profile.margin and profile.gap then
+    return profile.margin, profile.gap
+  end
+  if profile.controlClass == 'tablet' or profile.class == 'tablet' then
     return 16, 8
   end
-  if profile.class == 'comfortable' then
+  if profile.controlClass == 'comfortable' or
+      profile.class == 'comfortable' then
     return 12, 8
   end
   return 4, 4
+end
+
+local function applyOverlayProfile(profile)
+  local mobileUi = modules.client_mobileui
+  if not mobileUi or type(mobileUi.applyOverlaySurface) ~= 'function' then
+    return
+  end
+  mobileUi.applyOverlaySurface(status, '#08121d', profile)
+  mobileUi.applyOverlaySurface(menu, '#0b1623', profile)
+  mobileUi.applyOverlaySurface(joystickHost, '#0b1623', profile)
+  mobileUi.applyOverlaySurface(drawerHandle, '#0b1623', profile)
+  if hotbar then
+    for index = 1, 8 do
+      mobileUi.applyOverlaySurface(
+        hotbar:getChildById('slot' .. index), '#0a1420', profile)
+    end
+  end
+  if actions then
+    for _, id in ipairs({ 'attack', 'use', 'chat', 'inventory' }) do
+      mobileUi.applyOverlaySurface(actions:getChildById(id), '#0b1623', profile)
+    end
+  end
 end
 
 local function computeLayout(profile)
@@ -333,6 +359,7 @@ function applyProfile(profile)
   if hotbarAdapter then
     hotbarAdapter:applyProfile(profile)
   end
+  applyOverlayProfile(profile)
   local layout = computeLayout(profile)
   removeEvent(layoutEvent)
   layoutEvent = addEvent(function()
@@ -735,6 +762,7 @@ function init()
   g_ui.importStyle('views/minimap.otui')
   g_ui.importStyle('views/battle.otui')
   g_ui.importStyle('views/vip.otui')
+  g_ui.importStyle('views/settings.otui')
   hud = g_ui.displayUI('game_mobileui')
   status = hud:getChildById('status')
   menu = hud:getChildById('menu')
@@ -789,6 +817,10 @@ function init()
   if MobileVip then
     replacePlaceholderDrawerView('vip',
       MobileVip.createDescriptor())
+  end
+  if MobileSettings then
+    replacePlaceholderDrawerView('settings',
+      MobileSettings.createDescriptor())
   end
 
   gameActive = false

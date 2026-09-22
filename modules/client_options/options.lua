@@ -202,13 +202,13 @@ local function setup()
 
         if type(v) == 'boolean' then
             local value = g_settings.getBoolean(k)
-            setOption(k, value, true)
+            setOption(k, value, true, true)
         elseif type(v) == 'number' then
             local value = g_settings.getNumber(k)
-            setOption(k, value, true)
+            setOption(k, value, true, true)
         elseif type(v) == 'string' then
             local value = g_settings.getString(k)
-            setOption(k, value, true)
+            setOption(k, value, true, true)
         end
     end
     
@@ -422,7 +422,7 @@ function controller:onGameStart()
     end
 end
 
-function setOption(key, value, force)
+function setOption(key, value, force, fromSettings, storeBeforeCallbacks)
     if not modules.game_interface then
         return
     end
@@ -432,9 +432,24 @@ function setOption(key, value, force)
         g_logger.warning(string.format("[client_options] Attempted to set unknown option: '%s'", key))
         return
     end
-    
+
+    local corrected = false
+    if option.validate then
+        local normalized = option.validate(value, fromSettings == true)
+        corrected = normalized ~= value
+        value = normalized
+    end
+
     if not force and option.value == value then
+        if corrected then
+            g_settings.set(key, value)
+            g_settings.save()
+        end
         return
+    end
+
+    if option.actionAfterStore or storeBeforeCallbacks then
+        option.value = value
     end
 
     if option.action then
@@ -459,6 +474,9 @@ function setOption(key, value, force)
 
     option.value = value
     g_settings.set(key, value)
+    if corrected then
+        g_settings.save()
+    end
 end
 
 function setupOptionsMainButton()

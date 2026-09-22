@@ -1,3 +1,48 @@
+local MOBILE_PRESET_DEFAULT = 'comfortable'
+local MOBILE_HANDEDNESS_DEFAULT = 'standard'
+local MOBILE_OPACITY_DEFAULT = 0.86
+local MOBILE_OPACITY_MIN = 0.72
+local MOBILE_OPACITY_MAX = 1.0
+
+local function publishMobileProfile()
+    local mobileUi = modules and modules.client_mobileui
+    if mobileUi and mobileUi.refreshProfileSettings then
+        mobileUi.refreshProfileSettings()
+    end
+end
+
+local function validateMobilePreset(value)
+    if value == 'compact' or value == 'comfortable' then
+        return value
+    end
+    return MOBILE_PRESET_DEFAULT
+end
+
+local function validateMobileHandedness(value)
+    if value == 'standard' or value == 'mirrored' then
+        return value
+    end
+    return MOBILE_HANDEDNESS_DEFAULT
+end
+
+local function validateMobileOpacity(value, fromSettings)
+    local number = tonumber(value)
+    if number == nil or number ~= number then
+        return MOBILE_OPACITY_DEFAULT
+    end
+    if fromSettings and
+        (number < MOBILE_OPACITY_MIN or number > MOBILE_OPACITY_MAX) then
+        return MOBILE_OPACITY_DEFAULT
+    end
+    if number == math.huge then
+        return MOBILE_OPACITY_MAX
+    end
+    if number == -math.huge then
+        return MOBILE_OPACITY_MIN
+    end
+    return math.max(MOBILE_OPACITY_MIN, math.min(MOBILE_OPACITY_MAX, number))
+end
+
 return {
     vsync                             = {
         value = true,
@@ -624,6 +669,24 @@ return {
     },
     profile                           = {
         value = 1,
+    },
+    mobileControlPreset               = {
+        value = MOBILE_PRESET_DEFAULT,
+        validate = validateMobilePreset,
+        actionAfterStore = true,
+        action = publishMobileProfile
+    },
+    mobileHandedness                  = {
+        value = MOBILE_HANDEDNESS_DEFAULT,
+        validate = validateMobileHandedness,
+        actionAfterStore = true,
+        action = publishMobileProfile
+    },
+    mobileOverlayOpacity              = {
+        value = MOBILE_OPACITY_DEFAULT,
+        validate = validateMobileOpacity,
+        actionAfterStore = true,
+        action = publishMobileProfile
     },
     rightJoystick                     = {
         value = false,

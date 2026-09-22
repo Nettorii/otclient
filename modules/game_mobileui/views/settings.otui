@@ -1,0 +1,160 @@
+MobileSettingsValueRow < UIButton
+  height: 56
+  min-height: 56
+  background-color: #101c29db
+  border-width: 1
+  border-color: #7891a455
+  focusable: false
+  phantom: false
+
+  $pressed:
+    background-color: #203a51ee
+
+  Label
+    id: name
+    anchors.left: parent.left
+    anchors.right: value.left
+    anchors.verticalCenter: parent.verticalCenter
+    margin-left: 10
+    margin-right: 8
+    color: #e5edf4
+    font: verdana-11px-antialised
+    text-align: left
+    phantom: true
+
+  Label
+    id: value
+    width: 104
+    anchors.right: parent.right
+    anchors.verticalCenter: parent.verticalCenter
+    margin-right: 10
+    color: #ffffff
+    font: verdana-11px-antialised
+    text-align: right
+    phantom: true
+
+MobileSettingsTouchButton < UIButton
+  height: 56
+  min-height: 56
+  min-width: 48
+  background-color: #101c29db
+  border-width: 1
+  border-color: #7891a455
+  color: #e5edf4
+  font: verdana-11px-antialised
+  text-align: center
+  focusable: false
+  phantom: false
+
+  $pressed:
+    background-color: #203a51ee
+
+MobileSettingsOpacityRow < Panel
+  height: 56
+  min-height: 56
+  background-color: #101c29db
+  border-width: 1
+  border-color: #7891a455
+  phantom: false
+
+  Label
+    id: name
+    anchors.left: parent.left
+    anchors.right: mobileOverlayOpacityMinus.left
+    anchors.verticalCenter: parent.verticalCenter
+    margin-left: 10
+    margin-right: 6
+    text: Overlay opacity
+    color: #e5edf4
+    font: verdana-11px-antialised
+    text-align: left
+    phantom: true
+
+  Label
+    id: mobileOverlayOpacityValue
+    width: 54
+    anchors.right: mobileOverlayOpacityMinus.left
+    anchors.verticalCenter: parent.verticalCenter
+    margin-right: 4
+    color: #ffffff
+    font: verdana-11px-antialised
+    text-align: right
+    phantom: true
+
+  MobileSettingsTouchButton
+    id: mobileOverlayOpacityMinus
+    width: 56
+    anchors.right: mobileOverlayOpacityPlus.left
+    anchors.top: parent.top
+    text: "-"
+
+  MobileSettingsTouchButton
+    id: mobileOverlayOpacityPlus
+    width: 56
+    anchors.right: parent.right
+    anchors.top: parent.top
+    text: "+"
+
+MobileSettingsSectionLabel < Label
+  height: 28
+  color: #b9c9d5
+  font: verdana-11px-antialised
+  text-align: left
+  text-wrap: true
+  phantom: true
+
+MobileSettingsOptionRow < MobileSettingsValueRow
+
+MobileSettingsModalClose < MobileSettingsTouchButton
+
+MobileSettingsOptionSheet < Panel
+  height: 56
+  phantom: false
+  layout:
+    type: verticalBox
+    spacing: 4
+
+MobileSettingsView < Panel
+  height: 554
+  anchors.left: parent.left
+  anchors.right: parent.right
+  focusable: false
+  phantom: false
+  layout:
+    type: verticalBox
+    spacing: 6
+
+  MobileSettingsSectionLabel
+    text: Mobile controls
+
+  MobileSettingsValueRow
+    id: mobileControlPreset
+
+  MobileSettingsValueRow
+    id: mobileHandedness
+
+  MobileSettingsOpacityRow
+    id: mobileOverlayOpacity
+
+  MobileSettingsTouchButton
+    id: mobileSettingsReset
+    text: Reset mobile controls
+
+  MobileSettingsSectionLabel
+    text: More settings
+
+  MobileSettingsTouchButton
+    id: settingsGraphics
+    text: Graphics
+
+  MobileSettingsTouchButton
+    id: settingsAudio
+    text: Audio
+
+  MobileSettingsTouchButton
+    id: settingsInterface
+    text: Interface
+
+  MobileSettingsTouchButton
+    id: settingsGameplay
+    text: Gameplay

@@ -531,6 +531,10 @@ function Host:_renderNavigation()
       button:setImageSource(entry.descriptor.icon)
     end
     button:setEnabled(true)
+    if type(self.mobileUi.applyOverlaySurface) == 'function' then
+      self.mobileUi.applyOverlaySurface(
+        button, '#101c29', self.getProfile())
+    end
     button.onClick = function()
       local currentOwner = self.navigationOwners[button]
       if self.terminated or button:isDestroyed() or
@@ -552,6 +556,22 @@ function Host:_renderNavigation()
   end
 end
 
+function Host:_applyOverlay(profile)
+  local apply = self.mobileUi.applyOverlaySurface
+  if type(apply) ~= 'function' then
+    return
+  end
+  apply(self.backdrop, '#02060a', profile)
+  apply(self.surface, '#0b131e', profile)
+  if self.surface then
+    apply(self.surface:recursiveGetChildById('drawerHeader'), '#152333', profile)
+  end
+  apply(self.navigation, '#101c29', profile)
+  for _, button in ipairs(self.navigationButtons) do
+    apply(button, '#101c29', profile)
+  end
+end
+
 function Host:_applyGeometry(profile)
   local geometry = MobileDrawer.computeGeometry(profile)
   if not geometry then
@@ -566,6 +586,7 @@ function Host:_applyGeometry(profile)
       height = geometry.height
     })
   end
+  self:_applyOverlay(profile)
   return true
 end
 
