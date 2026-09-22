@@ -6,6 +6,17 @@ local containerRevision = 0
 local containerDispatching = false
 local pendingContainerChange = nil
 
+local function copyPosition(position)
+    if not position then
+        return nil
+    end
+    return {
+        x = position.x,
+        y = position.y,
+        z = position.z
+    }
+end
+
 local function containerSnapshot(container)
     local capacity = math.max(0, tonumber(container:getCapacity()) or 0)
     local size = math.max(0, tonumber(container:getSize()) or 0)
@@ -22,7 +33,7 @@ local function containerSnapshot(container)
             slot = slot,
             index = firstIndex + slot,
             item = container:getItem(slot),
-            position = container:getSlotPosition(slot)
+            position = copyPosition(container:getSlotPosition(slot))
         }
     end
     local hasParent = container:hasParent() == true
@@ -71,7 +82,7 @@ local function cloneContainerSnapshot(snapshot)
             slot = item.slot,
             index = item.index,
             item = item.item,
-            position = item.position
+            position = copyPosition(item.position)
         }
     end
     return copy
@@ -147,15 +158,19 @@ local function notifyContainers(changeType, container, slot)
             end)
             for _, observer in ipairs(observers) do
                 if containerObservers[observer.id] == observer.callback then
-                    observer.callback(cloneContainerSnapshots(snapshots), {
-                        type = change.type,
-                        containerId = change.containerId,
-                        slot = change.slot,
-                        revision = change.revision
-                    })
-                end
-                if containerRevision ~= change.revision then
-                    break
+                    local callbackOk, callbackError = pcall(
+                        observer.callback,
+                        cloneContainerSnapshots(snapshots), {
+                            type = change.type,
+                            containerId = change.containerId,
+                            slot = change.slot,
+                            revision = change.revision
+                        })
+                    if not callbackOk and g_logger and g_logger.error then
+                        g_logger.error(
+                            '[game_containers] container observer failed: ' ..
+                            tostring(callbackError))
+                    end
                 end
             end
         end
@@ -189,10 +204,19 @@ function seekContainerPage(containerId, firstIndex)
     local container = openContainerById(containerId)
     firstIndex = tonumber(firstIndex)
     if not container or not container:hasPages() or not firstIndex or
-        firstIndex < 0 then
+        firstIndex ~= firstIndex or firstIndex == math.huge or
+        firstIndex == -math.huge or firstIndex ~= math.floor(firstIndex) then
         return false
     end
-    g_game.seekInContainer(container:getId(), math.floor(firstIndex))
+    local capacity = tonumber(container:getCapacity())
+    local size = tonumber(container:getSize())
+    if not capacity or not size or capacity ~= capacity or size ~= size or
+        capacity == math.huge or size == math.huge or
+        capacity <= 0 or size <= 0 or firstIndex < 0 or
+        firstIndex >= size or firstIndex % capacity ~= 0 then
+        return false
+    end
+    g_game.seekInContainer(container:getId(), firstIndex)
     return true
 end
 

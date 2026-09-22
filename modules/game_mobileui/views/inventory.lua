@@ -26,6 +26,11 @@ local PVP_MODES = {
   { id = 'pvpRedFist', text = 'Red', value = PVPRedFist }
 }
 
+local BASE_ROOT_HEIGHT = 760
+local BASE_CONTAINER_SECTION_HEIGHT = 242
+local BASE_CONTAINER_DETAILS_HEIGHT = 158
+local BASE_CONTAINER_ITEMS_HEIGHT = 52
+
 local function setActive(button, active)
   if button then
     button:setOn(active == true)
@@ -71,6 +76,14 @@ function View:_positionInside(widget, position)
     position.y < widget:getY() + widget:getHeight()
 end
 
+function View:_isCurrentItemWidget(widget)
+  return widget and not widget:isDestroyed() and
+    widget:getClassName() == 'UIItem' and widget:isVisible() and
+    widget:isEnabled() and widget:isDraggable() and
+    widget.currentDragThing and
+    widget.mobileInventoryBindingGeneration == self.itemBindingGeneration
+end
+
 function View:_installMapDropBridge()
   self:_removeMapDropBridge()
   local root = g_ui.getRootWidget()
@@ -106,9 +119,8 @@ function View:_installMapDropBridge()
       binding.previousDragLeave(widget, droppedWidget, position) or false
   end
   binding.onDrop = function(widget, droppedWidget, position)
-    if self:_positionInside(surface, position) or not droppedWidget or
-        droppedWidget:getClassName() ~= 'UIItem' or
-        not droppedWidget.currentDragThing or
+    if self:_positionInside(surface, position) or
+        not self:_isCurrentItemWidget(droppedWidget) or
         not gameMap:containsPoint(position) then
       return binding.previousDrop and
         binding.previousDrop(widget, droppedWidget, position) or false
@@ -116,17 +128,12 @@ function View:_installMapDropBridge()
 
     local wasPhantom = backdrop:isPhantom()
     backdrop:setPhantom(true)
-    local previousCanAcceptDrop = gameMap.canAcceptDrop
-    local forcedCanAcceptDrop = function()
-      return true
-    end
-    gameMap.canAcceptDrop = forcedCanAcceptDrop
     local ok, result = pcall(function()
+      if not gameMap:canAcceptDrop(droppedWidget, position) then
+        return false
+      end
       return gameMap:onDrop(droppedWidget, position)
     end)
-    if gameMap.canAcceptDrop == forcedCanAcceptDrop then
-      gameMap.canAcceptDrop = previousCanAcceptDrop
-    end
     if not backdrop:isDestroyed() then
       backdrop:setPhantom(wasPhantom)
     end
@@ -198,16 +205,19 @@ function View:_createEquipmentItems()
     item:setTooltip(SLOT_NAMES[slot] or tostring(slot))
     item:setDraggable(true)
     item.position = { x = 65535, y = slot, z = 0 }
+    item.mobileInventoryBindingGeneration = self.itemBindingGeneration
     self.equipmentItems[slot] = item
   end
 end
 
 function View:create(parent)
+  self.itemBindingGeneration = self.itemBindingGeneration + 1
+  self.containerItems = {}
   self.holder = parent
   local content = parent:getParent()
   local width = content and content:getWidth() or parent:getWidth()
   parent:setWidth(width)
-  parent:setHeight(760)
+  parent:setHeight(BASE_ROOT_HEIGHT)
   self.root = g_ui.createWidget('MobileInventoryView', parent)
   self.root:setWidth(width)
   self:_createEquipmentItems()
@@ -235,7 +245,19 @@ function View:_renderInventory(snapshot)
     local itemWidget = self.equipmentItems[slotSnapshot.slot]
     if itemWidget then
       itemWidget:setItem(slotSnapshot.item)
-      itemWidget:setDraggable(available)
+    end
+  end
+  for slot = InventorySlotFirst, InventorySlotPurse do
+    local itemWidget = self.equipmentItems[slot]
+    if itemWidget then
+      local slotAvailable = available and
+        (slot ~= InventorySlotPurse or snapshot.purseAvailable == true)
+      local slotVisible = slot ~= InventorySlotPurse or
+        snapshot.purseAvailable == true
+      itemWidget:setVisible(slotVisible)
+      itemWidget:setEnabled(slotAvailable)
+      itemWidget:setDraggable(slotAvailable)
+      itemWidget:setPhantom(not slotAvailable)
     end
   end
   for _, mode in ipairs(FIGHT_MODES) do
@@ -289,6 +311,10 @@ end
 
 function View:_renderContainerItems(snapshot)
   local panel = self:_widget('containerItems')
+  for _, item in ipairs(self.containerItems) do
+    item.mobileInventoryBindingGeneration = nil
+  end
+  self.containerItems = {}
   panel:destroyChildren()
   local width = math.max(48, panel:getWidth())
   local columns = math.max(1, math.floor((width + 4) / 52))
@@ -297,9 +323,10 @@ function View:_renderContainerItems(snapshot)
   panel:setHeight(itemsHeight)
   self:_widget('containerDetails'):setHeight(104 + itemsHeight)
   self:_widget('containersSection'):setHeight(184 + itemsHeight)
-  self.root:setHeight(650 + itemsHeight)
+  local contentHeight = math.max(BASE_ROOT_HEIGHT, 650 + itemsHeight)
+  self.root:setHeight(contentHeight)
   if self.holder then
-    self.holder:setHeight(650 + itemsHeight)
+    self.holder:setHeight(contentHeight)
   end
   for _, itemSnapshot in ipairs(snapshot.items) do
     local item = g_ui.createWidget('MobileContainerItem', panel)
@@ -307,6 +334,26 @@ function View:_renderContainerItems(snapshot)
     item:setItem(itemSnapshot.item)
     item:setDraggable(true)
     item.position = itemSnapshot.position
+    item.mobileInventoryBindingGeneration = self.itemBindingGeneration
+    self.containerItems[#self.containerItems + 1] = item
+  end
+end
+
+function View:_resetContainerLayout()
+  local panel = self:_widget('containerItems')
+  for _, item in ipairs(self.containerItems) do
+    item.mobileInventoryBindingGeneration = nil
+  end
+  self.containerItems = {}
+  panel:destroyChildren()
+  panel:setHeight(BASE_CONTAINER_ITEMS_HEIGHT)
+  self:_widget('containerDetails'):setHeight(
+    BASE_CONTAINER_DETAILS_HEIGHT)
+  self:_widget('containersSection'):setHeight(
+    BASE_CONTAINER_SECTION_HEIGHT)
+  self.root:setHeight(BASE_ROOT_HEIGHT)
+  if self.holder then
+    self.holder:setHeight(BASE_ROOT_HEIGHT)
   end
 end
 
@@ -320,6 +367,7 @@ function View:_renderContainers()
 
   if empty then
     self.activeContainerId = nil
+    self:_resetContainerLayout()
     self:_bindDynamic(self:_widget('containerStack'))
     return
   end
@@ -425,6 +473,7 @@ function View:destroy()
   self.root = nil
   self.holder = nil
   self.equipmentItems = {}
+  self.containerItems = {}
   self.inventorySnapshot = nil
   self.containerSnapshots = {}
   self.activeContainerId = nil
@@ -436,6 +485,8 @@ function MobileInventory.createDescriptor(options)
     inventory = options.inventory or modules.game_inventory,
     containers = options.containers or modules.game_containers,
     equipmentItems = {},
+    containerItems = {},
+    itemBindingGeneration = 0,
     containerSnapshots = {},
     dynamicGestureUnbinds = {}
   }, View)

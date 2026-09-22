@@ -116,14 +116,18 @@ local function notifyInventory(changeType, slot)
             end)
             for _, observer in ipairs(observers) do
                 if inventoryObservers[observer.id] == observer.callback then
-                    observer.callback(cloneInventorySnapshot(snapshot), {
-                        type = change.type,
-                        slot = change.slot,
-                        revision = change.revision
-                    })
-                end
-                if inventoryRevision ~= change.revision then
-                    break
+                    local callbackOk, callbackError = pcall(
+                        observer.callback,
+                        cloneInventorySnapshot(snapshot), {
+                            type = change.type,
+                            slot = change.slot,
+                            revision = change.revision
+                        })
+                    if not callbackOk and g_logger and g_logger.error then
+                        g_logger.error(
+                            '[game_inventory] inventory observer failed: ' ..
+                            tostring(callbackError))
+                    end
                 end
             end
         end
