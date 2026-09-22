@@ -326,7 +326,8 @@ function Host:_bindGestureWidget(widget, scrollBar)
     host = self,
     widget = widget,
     previous = {},
-    wrappers = {}
+    wrappers = {},
+    suppressNextClick = false
   }
   local interceptors = {
     onMousePress = function(host, _, position, button)
@@ -337,6 +338,7 @@ function Host:_bindGestureWidget(widget, scrollBar)
       if button ~= MouseLeftButton then
         return true
       end
+      binding.suppressNextClick = false
       host:_beginGesture(position)
       return false
     end,
@@ -344,6 +346,9 @@ function Host:_bindGestureWidget(widget, scrollBar)
       return host:_moveGesture(position, scrollBar)
     end,
     onMouseRelease = function(host, _, _, button)
+      if button == MouseLeftButton and host.gesture.dragged then
+        binding.suppressNextClick = true
+      end
       return host:_finishGesture(button)
     end
   }
@@ -364,6 +369,25 @@ function Host:_bindGestureWidget(widget, scrollBar)
     widget[event] = binding.wrappers[event]
   end
 
+  local previousClick = widget.onClick
+  binding.previous.onClick = previousClick
+  binding.wrappers.onClick = function(...)
+    if binding.suppressNextClick then
+      binding.suppressNextClick = false
+      local boundWidget = binding.widget
+      if not binding.active then
+        if boundWidget and not boundWidget:isDestroyed() and
+            boundWidget.onClick == binding.wrappers.onClick then
+          boundWidget.onClick = previousClick
+        end
+        binding.widget = nil
+      end
+      return true
+    end
+    return previousClick and previousClick(...) or false
+  end
+  widget.onClick = binding.wrappers.onClick
+
   binding.unbind = function()
     if not binding.active then
       return
@@ -375,15 +399,24 @@ function Host:_bindGestureWidget(widget, scrollBar)
         host.gestureBindings[boundWidget] == binding then
       host.gestureBindings[boundWidget] = nil
     end
+    local keepClickWrapper = false
     if boundWidget and not boundWidget:isDestroyed() then
       for event, wrapper in pairs(binding.wrappers) do
         if boundWidget[event] == wrapper then
-          boundWidget[event] = binding.previous[event]
+          if event == 'onClick' and binding.suppressNextClick then
+            keepClickWrapper = true
+          else
+            boundWidget[event] = binding.previous[event]
+          end
         end
       end
+    elseif binding.suppressNextClick then
+      keepClickWrapper = true
     end
     binding.host = nil
-    binding.widget = nil
+    if not keepClickWrapper then
+      binding.widget = nil
+    end
   end
 
   self.gestureBindings[widget] = binding
@@ -498,7 +531,6 @@ function Host:_renderNavigation()
       button:setImageSource(entry.descriptor.icon)
     end
     button:setEnabled(true)
-    self:_bindGestureWidget(button, self.navigationScrollBar)
     button.onClick = function()
       local currentOwner = self.navigationOwners[button]
       if self.terminated or button:isDestroyed() or
@@ -515,6 +547,7 @@ function Host:_renderNavigation()
       end
       return self:open(id)
     end
+    self:_bindGestureWidget(button, self.navigationScrollBar)
     self.navigationButtons[#self.navigationButtons + 1] = button
   end
 end
