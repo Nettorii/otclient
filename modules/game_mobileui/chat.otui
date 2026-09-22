@@ -1,0 +1,157 @@
+MobileChatHeaderButton < MobileOverlayButton
+  width: 48
+  height: 48
+  min-width: 48
+  min-height: 48
+  background-color: #152333ee
+  mobile-overlay-base: #152333
+  border-width: 1
+  border-color: #7891a466
+  color: #e5edf4
+  font: verdana-11px-antialised
+  text-align: center
+  focusable: false
+  phantom: false
+
+MobileChatMessageRow < MobileOverlayTextQtEdit
+  min-height: 24
+  margin-bottom: 4
+  padding: 5
+  background-color: #101c29dd
+  mobile-overlay-base: #101c29
+  border-width: 1
+  border-color: #7891a433
+  color: #e5edf4
+  font: verdana-11px-antialised
+  text-wrap: true
+  text-auto-resize: true
+  cursor-visible: false
+  editable: false
+  selectable: true
+  focusable: false
+  phantom: false
+
+MobileChatInput < MobileOverlayTextQtEdit
+  height: 48
+  min-height: 48
+  padding-left: 8
+  padding-right: 8
+  background-color: #08121df5
+  mobile-overlay-base: #08121d
+  border-width: 1
+  border-color: #7891a477
+  color: #ffffff
+  font: verdana-11px-antialised
+  editable: true
+  selectable: true
+  cursor-visible: true
+  focusable: true
+  phantom: false
+
+MobileChatBackdrop < MobileOverlayPanel
+  id: chatBackdrop
+  anchors.fill: parent
+  background-color: #02060aaa
+  mobile-overlay-base: #02060a
+  focusable: true
+  phantom: false
+
+  MobileOverlayPanel
+    id: chatSurface
+    background-color: #0b131ef5
+    mobile-overlay-base: #0b131e
+    border-width: 1
+    border-color: #7891a477
+    clipping: true
+    focusable: false
+    phantom: false
+
+    Panel
+      id: chatHeader
+      anchors.left: parent.left
+      anchors.right: parent.right
+      anchors.top: parent.top
+      height: 48
+      phantom: false
+
+      MobileChatHeaderButton
+        id: chatPreviousChannel
+        anchors.left: parent.left
+        anchors.top: parent.top
+        text: <
+
+      MobileChatHeaderButton
+        id: chatNextChannel
+        anchors.right: chatClose.left
+        anchors.top: parent.top
+        text: >
+
+      MobileChatHeaderButton
+        id: chatClose
+        anchors.right: parent.right
+        anchors.top: parent.top
+        text: X
+
+      MobileChatHeaderButton
+        id: chatChannel
+        anchors.left: chatPreviousChannel.right
+        anchors.right: chatNextChannel.left
+        anchors.top: parent.top
+        margin-left: 4
+        margin-right: 4
+        text: Local Chat
+
+    ScrollablePanel
+      id: chatMessages
+      anchors.left: parent.left
+      anchors.right: chatMessagesScrollBar.left
+      anchors.top: chatHeader.bottom
+      anchors.bottom: chatFooter.top
+      margin: 8
+      margin-right: 4
+      vertical-scrollbar: chatMessagesScrollBar
+      clipping: true
+      phantom: false
+      layout:
+        type: verticalBox
+        spacing: 0
+        align-bottom: true
+
+    VerticalScrollBar
+      id: chatMessagesScrollBar
+      anchors.top: chatHeader.bottom
+      anchors.bottom: chatFooter.top
+      anchors.right: parent.right
+      margin-top: 8
+      margin-right: 4
+      margin-bottom: 8
+      step: 28
+      pixels-scroll: true
+
+    MobileOverlayPanel
+      id: chatFooter
+      anchors.left: parent.left
+      anchors.right: parent.right
+      anchors.bottom: parent.bottom
+      height: 56
+      padding: 4
+      background-color: #101c29f5
+      mobile-overlay-base: #101c29
+      border-width-top: 1
+      border-color-top: #7891a455
+      phantom: false
+
+      MobileChatInput
+        id: chatInput
+        anchors.left: parent.left
+        anchors.right: chatSend.left
+        anchors.verticalCenter: parent.verticalCenter
+        margin-right: 4
+        placeholder: Message
+
+      MobileChatHeaderButton
+        id: chatSend
+        anchors.right: parent.right
+        anchors.verticalCenter: parent.verticalCenter
+        width: 64
+        text: Send

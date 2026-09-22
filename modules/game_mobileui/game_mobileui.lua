@@ -8,14 +8,17 @@ local drawerHandle
 local statusAdapter
 local actionAdapter
 local hotbarAdapter
+local chatAdapter
 local drawerHost
 local placeholderUnregisters = {}
 local drawerViewUnregisters = {}
+local unregisterChatHandler
 local unsubscribeProfile
 local layoutEvent
 local windowCallbacks
 local gameActive = false
 local controlsFit = false
+local controlsSuppressed = false
 local foregroundOwner = {}
 
 local function nonNegative(value)
@@ -364,7 +367,8 @@ function setControlsVisible(visible)
     return false
   end
 
-  visible = visible == true and gameActive and controlsFit
+  visible = visible == true and gameActive and controlsFit and
+    not controlsSuppressed
   if not visible then
     cancelOwnedGestures()
   end
@@ -377,6 +381,18 @@ function setControlsVisible(visible)
   synchronizeHotbar()
   synchronizeInputTargets()
   return true
+end
+
+local function hideGameplayControls()
+  controlsSuppressed = true
+  setControlsVisible(false)
+end
+
+local function showGameplayControls()
+  controlsSuppressed = false
+  if gameActive then
+    setControlsVisible(true)
+  end
 end
 
 local function raiseGameplayHud()
@@ -452,6 +468,7 @@ local function onGameStart()
   end
 
   gameActive = true
+  controlsSuppressed = false
   if statusAdapter then
     statusAdapter:onGameStart()
   end
@@ -471,6 +488,10 @@ end
 
 local function onGameEnd()
   cancelOwnedGestures()
+  if chatAdapter then
+    chatAdapter:onGameEnd()
+  end
+  controlsSuppressed = false
   if drawerHost then
     drawerHost:close()
   end
@@ -501,7 +522,22 @@ function interact()
 end
 
 function toggleChat()
-  return actionAdapter and actionAdapter:toggleChat() or false
+  if chatAdapter then
+    return chatAdapter:toggle()
+  end
+  return false
+end
+
+function openChat()
+  return chatAdapter and chatAdapter:openChat() or false
+end
+
+function closeChat()
+  return chatAdapter and chatAdapter:close() or false
+end
+
+function isChatOpen()
+  return chatAdapter and chatAdapter:isChatOpen() or false
 end
 
 function toggleDrawer()
@@ -731,6 +767,36 @@ function runSelfTests()
       'undersized gameplay profile must use controlsFit fallback')
   end
 
+  for _, keyboardProfile in ipairs({
+    {
+      usableWidth = 390, usableHeight = 326,
+      safe = { left = 0, top = 47, right = 0, bottom = 34 },
+      keyboardHeight = 253
+    },
+    {
+      usableWidth = 393, usableHeight = 295,
+      safe = { left = 0, top = 24, right = 0, bottom = 24 },
+      keyboardHeight = 249
+    },
+    {
+      usableWidth = 1024, usableHeight = 491,
+      safe = { left = 20, top = 24, right = 20, bottom = 20 },
+      keyboardHeight = 233
+    }
+  }) do
+    local geometry = MobileChat.computeGeometry(keyboardProfile)
+    assert(geometry and geometry.headerHeight >= 48 and
+      geometry.footerHeight >= 48,
+      'mobile chat controls must remain touch sized')
+    assert(geometry.x >= keyboardProfile.safe.left and
+      geometry.y >= keyboardProfile.safe.top and
+      geometry.x + geometry.width <=
+        keyboardProfile.safe.left + keyboardProfile.usableWidth and
+      geometry.y + geometry.height <=
+        keyboardProfile.safe.top + keyboardProfile.usableHeight,
+      'mobile chat must remain inside keyboard-safe usable rect')
+  end
+
   g_logger.info('[mobile-ui-test] gameplay-layout PASS')
 end
 
@@ -742,6 +808,7 @@ function init()
 
   g_ui.importStyle('styles.otui')
   g_ui.importStyle('drawer.otui')
+  g_ui.importStyle('chat.otui')
   g_ui.importStyle('views/inventory.otui')
   g_ui.importStyle('views/container.otui')
   g_ui.importStyle('views/character.otui')
@@ -773,6 +840,31 @@ function init()
       isActive = actionsAreActive
     })
     hotbarAdapter:bind(hotbar)
+  end
+  if MobileChat then
+    chatAdapter = MobileChat.create({
+      cancelGestures = cancelOwnedGestures,
+      hideControls = hideGameplayControls,
+      showControls = showGameplayControls,
+      gameActive = function() return gameActive end,
+      getHotbarPage = function()
+        return hotbarAdapter and hotbarAdapter:getPage() or nil
+      end,
+      setHotbarPage = function(page)
+        if hotbarAdapter then
+          hotbarAdapter:_setPage(page)
+        end
+      end,
+      focusMap = function()
+        local map = modules.game_interface.getMapPanel()
+        if map then
+          map:focus()
+        end
+      end
+    })
+    unregisterChatHandler = actionAdapter:registerChatHandler(function()
+      return chatAdapter:toggle()
+    end)
   end
 
   drawerHost = MobileDrawer.create({
@@ -862,6 +954,14 @@ function terminate()
   removeEvent(layoutEvent)
   layoutEvent = nil
   onGameEnd()
+  if unregisterChatHandler then
+    unregisterChatHandler()
+    unregisterChatHandler = nil
+  end
+  if chatAdapter then
+    chatAdapter:terminate()
+    chatAdapter = nil
+  end
   if statusAdapter then
     statusAdapter:terminate()
     statusAdapter = nil
@@ -884,4 +984,5 @@ function terminate()
   drawerHandle = nil
   gameActive = false
   controlsFit = false
+  controlsSuppressed = false
 end

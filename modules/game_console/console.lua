@@ -136,9 +136,130 @@ ChannelEventFormats = {
 
 MAX_HISTORY = 500
 MAX_LINES = 100
+SEMANTIC_MESSAGE_MAX = 100
 HELP_CHANNEL = 9
 local LOOT_CHANNEL_ID = 0xFFF0
 local OWNER_CHANNEL_ID = 0xFFFF
+
+local function copySemanticMessage(message)
+    return {
+        channel = message.channel,
+        name = message.name,
+        level = message.level,
+        mode = message.mode,
+        text = message.text,
+        color = message.color,
+        timestamp = message.timestamp
+    }
+end
+
+function createSemanticMessageAdapter(maxMessages, onError)
+    maxMessages = math.max(1, math.floor(tonumber(maxMessages) or SEMANTIC_MESSAGE_MAX))
+    local adapter = {
+        maxMessages = maxMessages,
+        channels = {},
+        subscribers = {}
+    }
+
+    function adapter:getRecentMessages(channelName, limit)
+        channelName = tostring(channelName or '')
+        limit = math.max(0, math.floor(tonumber(limit) or self.maxMessages))
+        local buffer = self.channels[channelName]
+        if not buffer or limit == 0 then
+            return {}
+        end
+
+        local count = math.min(limit, buffer.size)
+        local firstOffset = buffer.size - count
+        local result = {}
+        for offset = firstOffset, buffer.size - 1 do
+            local index = ((buffer.head + offset - 1) % self.maxMessages) + 1
+            result[#result + 1] = copySemanticMessage(buffer.items[index])
+        end
+        return result
+    end
+
+    function adapter:subscribe(callback)
+        assert(type(callback) == 'function', 'message subscriber must be a function')
+        local entry = { callback = callback }
+        self.subscribers[#self.subscribers + 1] = entry
+        local subscribed = true
+        return function()
+            if not subscribed then
+                return
+            end
+            subscribed = false
+            for index, candidate in ipairs(self.subscribers) do
+                if candidate == entry then
+                    table.remove(self.subscribers, index)
+                    break
+                end
+            end
+        end
+    end
+
+    function adapter:accept(message)
+        local accepted = {
+            channel = tostring(message.channel or ''),
+            name = tostring(message.name or ''),
+            level = tonumber(message.level) or 0,
+            mode = tonumber(message.mode) or 0,
+            text = tostring(message.text or ''),
+            color = tostring(message.color or ''),
+            timestamp = tonumber(message.timestamp) or os.time()
+        }
+        local buffer = self.channels[accepted.channel]
+        if not buffer then
+            buffer = { items = {}, head = 1, size = 0 }
+            self.channels[accepted.channel] = buffer
+        end
+
+        local index
+        if buffer.size < self.maxMessages then
+            index = ((buffer.head + buffer.size - 1) % self.maxMessages) + 1
+            buffer.size = buffer.size + 1
+        else
+            index = buffer.head
+            buffer.head = (buffer.head % self.maxMessages) + 1
+        end
+        buffer.items[index] = accepted
+
+        local callbacks = {}
+        for _, entry in ipairs(self.subscribers) do
+            callbacks[#callbacks + 1] = entry.callback
+        end
+        for _, callback in ipairs(callbacks) do
+            local ok, errorMessage = pcall(callback, copySemanticMessage(accepted))
+            if not ok then
+                if onError then
+                    pcall(onError, errorMessage)
+                elseif perror then
+                    perror('console message subscriber failed: ' .. tostring(errorMessage))
+                end
+            end
+        end
+    end
+
+    function adapter:clear(channelName)
+        if channelName == nil then
+            self.channels = {}
+        else
+            self.channels[tostring(channelName)] = nil
+        end
+    end
+
+    return adapter
+end
+
+local semanticMessages = createSemanticMessageAdapter(SEMANTIC_MESSAGE_MAX)
+
+function getRecentMessages(channelName, limit)
+    return semanticMessages:getRecentMessages(channelName, limit)
+end
+
+function subscribeMessages(callback)
+    return semanticMessages:subscribe(callback)
+end
 
 consolePanel = nil
 consoleContentPanel = nil
@@ -528,6 +649,7 @@ function consoleController:onTerminate()
     consoleTextEdit = nil
     ownPrivateName = nil
     gameBottomPanel = nil
+    semanticMessages:clear()
     Console = nil
 end
 
@@ -623,6 +745,7 @@ function clear()
     end
     channels = {}
     ownPrivateName = nil
+    semanticMessages:clear()
 
     if defaultTab then
         defaultTab.tabPanel:getChildById('consoleBuffer'):destroyChildren()
@@ -663,6 +786,7 @@ function clearChannel(consoleTabBar)
     local currentTab = consoleTabBar:getCurrentTab()
     local currentTabName = currentTab:getText()
     currentTab.tabPanel:getChildById('consoleBuffer'):destroyChildren()
+    semanticMessages:clear(currentTabName)
     
     if readOnlyModeEnabled and currentTabName == activeactiveReadOnlyTabName then
         readOnlyPanel:getChildById('panel'):destroyChildren()
@@ -840,6 +964,7 @@ function removeTab(tab)
         g_game.closeNpcChannel()
     end
 
+    semanticMessages:clear(tab:getText())
     if getCurrentTab() == tab then
         consoleTabBar:selectTab(defaultTab)
     end
@@ -873,6 +998,53 @@ function getCurrentTab()
     return consoleTabBar:getCurrentTab()
 end
 
+function getCurrentChannelName()
+    local tab = getCurrentTab()
+    return tab and tab:getText() or nil
+end
+
+function getOpenChannelNames()
+    local result = {}
+    if not consoleTabBar then
+        return result
+    end
+    for _, collection in ipairs({
+        consoleTabBar.preTabs or {},
+        consoleTabBar.tabs or {},
+        consoleTabBar.postTabs or {}
+    }) do
+        for _, tab in ipairs(collection) do
+            result[#result + 1] = tab:getText()
+        end
+    end
+    return result
+end
+
+function selectChannel(channelName)
+    local tab = getTab(channelName)
+    if not tab then
+        return nil
+    end
+    consoleTabBar:selectTab(tab)
+    return tab:getText()
+end
+
+function selectNextChannel()
+    if not consoleTabBar then
+        return nil
+    end
+    consoleTabBar:selectNextTab()
+    return getCurrentChannelName()
+end
+
+function selectPreviousChannel()
+    if not consoleTabBar then
+        return nil
+    end
+    consoleTabBar:selectPrevTab()
+    return getCurrentChannelName()
+end
+
 function addChannel(name, id)
     channels[id] = name
     local focus = not table.find(ignoredChannels, id)
@@ -886,7 +1058,7 @@ function addPrivateChannel(receiver)
     return addTab(receiver, true)
 end
 
-function addPrivateText(text, speaktype, name, isPrivateCommand, creatureName)
+function addPrivateText(text, speaktype, name, isPrivateCommand, creatureName, semanticMessage)
     local focus = false
     if speaktype.npcChat then
         name = 'NPCs'
@@ -908,13 +1080,13 @@ function addPrivateText(text, speaktype, name, isPrivateCommand, creatureName)
     elseif focus and privateTab then
         consoleTabBar:selectTab(privateTab)
     end
-    addTabText(text, speaktype, privateTab, creatureName)
+    addTabText(text, speaktype, privateTab, creatureName, semanticMessage)
 end
 
-function addText(text, speaktype, tabName, creatureName)
+function addText(text, speaktype, tabName, creatureName, semanticMessage)
     local tab = getTab(tabName)
     if tab ~= nil then
-        addTabText(text, speaktype, tab, creatureName)
+        addTabText(text, speaktype, tab, creatureName, semanticMessage)
     end
 end
 
@@ -1236,11 +1408,12 @@ function onConsoleTextHovered(widget, text, hovered)
     end
 end
 
-function addTabText(text, speaktype, tab, creatureName)
+function addTabText(text, speaktype, tab, creatureName, semanticMessage)
     if not tab or tab.locked or not text or #text == 0 then
         return
     end
 
+    local acceptedText = semanticMessage and semanticMessage.text or text
     if modules.client_options.getOption('showTimestampsInConsole') then
         text = os.date('%H:%M') .. ' ' .. text
     end
@@ -1406,6 +1579,16 @@ function addTabText(text, speaktype, tab, creatureName)
         clearSelection(consoleBuffer)
         child:destroy()
     end
+
+    semanticMessages:accept({
+        channel = tab:getText(),
+        name = semanticMessage and semanticMessage.name or creatureName,
+        level = semanticMessage and semanticMessage.level or 0,
+        mode = semanticMessage and semanticMessage.mode or speaktype.speakType,
+        text = acceptedText,
+        color = speaktype.color,
+        timestamp = semanticMessage and semanticMessage.timestamp or os.time()
+    })
 end
 
 function removeTabLabelByName(tab, name)
@@ -1712,8 +1895,15 @@ function sendMessage(message, tab)
         local player = g_game.getLocalPlayer()
         g_game.talkPrivate(speaktype.speakType, name, message)
         if not dontAdd then
-            message = applyMessagePrefixies(g_game.getCharacterName(), player:getLevel(), message)
-            addPrivateText(message, speaktype, tabname, isPrivateCommand, g_game.getCharacterName())
+            local semanticText = message
+            local playerLevel = player:getLevel()
+            message = applyMessagePrefixies(g_game.getCharacterName(), playerLevel, message)
+            addPrivateText(message, speaktype, tabname, isPrivateCommand, g_game.getCharacterName(), {
+                name = g_game.getCharacterName(),
+                level = playerLevel,
+                mode = speaktype.speakType,
+                text = semanticText
+            })
         end
     end
 end
@@ -1847,14 +2037,20 @@ function onTalk(name, level, mode, message, channelId, creaturePos)
     end
 
     local composedMessage = applyMessagePrefixies(name, level, message)
+    local semanticMessage = {
+        name = name,
+        level = level,
+        mode = mode,
+        text = message
+    }
 
     if mode == MessageModes.RVRAnswer then
         violationReportTab.locked = false
-        addTabText(composedMessage, speaktype, violationReportTab, name)
+        addTabText(composedMessage, speaktype, violationReportTab, name, semanticMessage)
     elseif mode == MessageModes.RVRContinue then
-        addText(composedMessage, speaktype, name .. '\'...', name)
+        addText(composedMessage, speaktype, name .. '\'...', name, semanticMessage)
     elseif speaktype.private then
-        addPrivateText(composedMessage, speaktype, name, false, name)
+        addPrivateText(composedMessage, speaktype, name, false, name, semanticMessage)
         if modules.client_options.getOption('showPrivateMessagesOnScreen') and speaktype ~=
             SpeakTypesSettings.privateNpcToPlayer then
             modules.game_textmessage.displayPrivateMessage(name .. ':\n' .. message)
@@ -1866,7 +2062,7 @@ function onTalk(name, level, mode, message, channelId, creaturePos)
         end
 
         if channel then
-            addText(composedMessage, speaktype, channel, name)
+            addText(composedMessage, speaktype, channel, name, semanticMessage)
         else
             -- server sent a message on a channel that is not open
             pwarning('message in channel id ' .. channelId ..
@@ -1909,6 +2105,7 @@ function onCloseChannel(channelId)
         if tab then
             consoleTabBar:removeTab(tab)
         end
+        semanticMessages:clear(channel)
         for k, v in pairs(channels) do
             if (k == tab.channelId) then
                 channels[k] = nil
@@ -2762,6 +2959,7 @@ function clearTabByName(tabName)
         local panel = consoleTabBar:getTabPanel(tab)
         local consoleBuffer = panel:getChildById('consoleBuffer')
         consoleBuffer:destroyChildren()
+        semanticMessages:clear(tabName)
     end
 end
 
