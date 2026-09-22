@@ -1,4 +1,22 @@
-MobileUISurface < Panel
+MobileOverlayPanel < Panel
+  @onSetup: modules.client_mobileui.applyDeclaredOverlay(self)
+
+MobileOverlayButton < UIButton
+  @onSetup: modules.client_mobileui.applyDeclaredOverlay(self)
+
+MobileOverlayQtButton < QtButton
+  @onSetup: modules.client_mobileui.applyDeclaredOverlay(self)
+
+MobileOverlayTextQtEdit < TextQtEdit
+  @onSetup: modules.client_mobileui.applyDeclaredOverlay(self)
+
+MobileOverlayProgressBar < UIProgressBar
+  @onSetup: modules.client_mobileui.applyDeclaredOverlay(self)
+
+MobileOverlayScrollArea < UIScrollArea
+  @onSetup: modules.client_mobileui.applyDeclaredOverlay(self)
+
+MobileUISurface < MobileOverlayPanel
   background-color: #111927dd
   mobile-overlay-base: #111927
   border-width: 1

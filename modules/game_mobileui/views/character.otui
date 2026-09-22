@@ -17,7 +17,7 @@ MobileCharacterSection < Panel
   layout:
     type: verticalBox
 
-MobileCharacterRow < Panel
+MobileCharacterRow < MobileOverlayPanel
   height: 48
   min-height: 48
   background-color: #101c29aa

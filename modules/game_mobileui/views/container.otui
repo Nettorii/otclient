@@ -1,4 +1,4 @@
-MobileContainerTab < UIButton
+MobileContainerTab < MobileOverlayButton
   width: 112
   min-width: 48
   height: 48
@@ -16,7 +16,7 @@ MobileContainerTab < UIButton
   $on:
     border-color: #a8c8dcaa
 
-MobileContainerAction < UIButton
+MobileContainerAction < MobileOverlayButton
   min-width: 48
   height: 48
   background-color: #101c29ee

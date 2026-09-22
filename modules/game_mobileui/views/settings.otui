@@ -1,4 +1,4 @@
-MobileSettingsValueRow < UIButton
+MobileSettingsValueRow < MobileOverlayButton
   height: 56
   min-height: 56
   background-color: #101c29db
@@ -34,7 +34,7 @@ MobileSettingsValueRow < UIButton
     text-align: right
     phantom: true
 
-MobileSettingsTouchButton < UIButton
+MobileSettingsTouchButton < MobileOverlayButton
   height: 56
   min-height: 56
   min-width: 48
@@ -51,7 +51,7 @@ MobileSettingsTouchButton < UIButton
   $pressed:
     border-color: #9fc0d699
 
-MobileSettingsOpacityRow < Panel
+MobileSettingsOpacityRow < MobileOverlayPanel
   height: 56
   min-height: 56
   background-color: #101c29db

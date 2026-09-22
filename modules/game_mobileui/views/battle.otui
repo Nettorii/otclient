@@ -1,4 +1,4 @@
-MobileBattleControl < UIButton
+MobileBattleControl < MobileOverlayButton
   min-width: 56
   height: 56
   background-color: #101c29ee
@@ -14,7 +14,7 @@ MobileBattleControl < UIButton
   $pressed:
     border-color: #9fc0d699
 
-MobileBattleAction < UIButton
+MobileBattleAction < MobileOverlayButton
   height: 56
   min-height: 56
   background-color: #101c29ee
@@ -37,7 +37,7 @@ MobileBattleActionSheet < Panel
     type: verticalBox
     spacing: 4
 
-MobileBattleRow < UIButton
+MobileBattleRow < MobileOverlayButton
   height: 56
   min-height: 56
   background-color: #101c29dd

@@ -4,7 +4,7 @@ MobileDrawerMinimap < Minimap
   focusable: false
   phantom: false
 
-MobileMinimapButton < UIButton
+MobileMinimapButton < MobileOverlayButton
   min-width: 48
   height: 48
   background-color: #101c29ee

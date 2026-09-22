@@ -1,10 +1,10 @@
-MobileModalButton < QtButton
+MobileModalButton < MobileOverlayQtButton
   height: 48
   min-width: 48
   font: verdana-11px-antialised
   mobile-overlay-base: #101c29
 
-MobileModalBackdrop < Panel
+MobileModalBackdrop < MobileOverlayPanel
   anchors.fill: parent
   background-color: #02060acc
   mobile-overlay-base: #02060a
@@ -19,7 +19,7 @@ MobileModalBackdrop < Panel
     border-color: #7891a477
     clipping: true
 
-    Panel
+    MobileOverlayPanel
       id: modalHeader
       anchors.left: parent.left
       anchors.right: parent.right
@@ -65,7 +65,7 @@ MobileModalBackdrop < Panel
       step: 48
       pixels-scroll: true
 
-    UIScrollArea
+    MobileOverlayScrollArea
       id: modalFooter
       anchors.left: parent.left
       anchors.right: parent.right

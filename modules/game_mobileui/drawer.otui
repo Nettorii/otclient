@@ -1,4 +1,4 @@
-MobileDrawerNavigationButton < UIButton
+MobileDrawerNavigationButton < MobileOverlayButton
   width: 72
   height: 48
   min-width: 48
@@ -24,7 +24,7 @@ MobileDrawerViewHost < Panel
   focusable: false
   phantom: false
 
-MobileDrawerBackdrop < Panel
+MobileDrawerBackdrop < MobileOverlayPanel
   id: drawerBackdrop
   anchors.fill: parent
   background-color: #02060aaa
@@ -32,7 +32,7 @@ MobileDrawerBackdrop < Panel
   focusable: true
   phantom: false
 
-  Panel
+  MobileOverlayPanel
     id: drawerSurface
     background-color: #0b131ef5
     mobile-overlay-base: #0b131e
@@ -42,7 +42,7 @@ MobileDrawerBackdrop < Panel
     focusable: false
     phantom: false
 
-    Panel
+    MobileOverlayPanel
       id: drawerHeader
       anchors.left: parent.left
       anchors.right: parent.right
@@ -91,7 +91,7 @@ MobileDrawerBackdrop < Panel
       step: 48
       pixels-scroll: true
 
-    UIScrollArea
+    MobileOverlayScrollArea
       id: drawerNavigation
       anchors.left: parent.left
       anchors.right: parent.right

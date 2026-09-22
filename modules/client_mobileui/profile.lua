@@ -148,6 +148,7 @@ local PROFILE_VALUES = {
 local MOBILE_OPACITY_DEFAULT = 0.86
 local MOBILE_OPACITY_MIN = 0.72
 local MOBILE_OPACITY_MAX = 1.0
+local preparedMobileSettings
 
 local function nonNegative(value)
   return math.max(0, tonumber(value) or 0)
@@ -187,6 +188,58 @@ local function sanitizeOverlayOpacity(value)
   return math.max(MOBILE_OPACITY_MIN, math.min(MOBILE_OPACITY_MAX, value))
 end
 
+local function sanitizePersistedOverlayOpacity(value)
+  local number = tonumber(value)
+  if number == nil or number ~= number or number == math.huge or
+      number == -math.huge or number < MOBILE_OPACITY_MIN or
+      number > MOBILE_OPACITY_MAX then
+    return MOBILE_OPACITY_DEFAULT
+  end
+  return number
+end
+
+local function mobileV2Runtime()
+  return g_platform and g_platform.isMobile and g_platform.isMobile() and
+    type(isV2Enabled) == 'function' and isV2Enabled()
+end
+
+function prepareMobileProfileSettings()
+  if preparedMobileSettings or not mobileV2Runtime() then
+    return preparedMobileSettings
+  end
+
+  local values = {
+    mobileControlPreset = g_settings.getString(
+      'mobileControlPreset', 'comfortable'),
+    mobileHandedness = g_settings.getString(
+      'mobileHandedness', 'standard'),
+    mobileOverlayOpacity = g_settings.getNumber(
+      'mobileOverlayOpacity', MOBILE_OPACITY_DEFAULT)
+  }
+  local normalized = {
+    mobileControlPreset = sanitizeControlPreset(values.mobileControlPreset),
+    mobileHandedness = sanitizeHandedness(values.mobileHandedness),
+    mobileOverlayOpacity = sanitizePersistedOverlayOpacity(
+      values.mobileOverlayOpacity)
+  }
+  local corrected = false
+  for _, key in ipairs({
+    'mobileControlPreset',
+    'mobileHandedness',
+    'mobileOverlayOpacity'
+  }) do
+    if values[key] ~= normalized[key] then
+      g_settings.set(key, normalized[key])
+      corrected = true
+    end
+  end
+  if corrected then
+    g_settings.save()
+  end
+  preparedMobileSettings = normalized
+  return preparedMobileSettings
+end
+
 local function overlayColor(baseColor, opacity)
   local rgb = tostring(baseColor or '#000000'):match('^#?(%x%x%x%x%x%x)')
   if not rgb then
@@ -207,19 +260,27 @@ function applyOverlaySurface(widget, baseColor, profileOrOpacity)
   return true
 end
 
+function applyDeclaredOverlay(widget, profileOrOpacity)
+  if not widget or widget:isDestroyed() or
+      type(widget.getStyle) ~= 'function' then
+    return false
+  end
+  local style = widget:getStyle()
+  local baseColor = style and style['mobile-overlay-base']
+  if not baseColor then
+    return false
+  end
+  return applyOverlaySurface(
+    widget, baseColor, profileOrOpacity or getProfile())
+end
+
 function applyOverlayTree(root, profileOrOpacity)
   if not root or root:isDestroyed() then
     return false
   end
 
   local applied = false
-  if type(root.getStyle) == 'function' then
-    local style = root:getStyle()
-    local baseColor = style and style['mobile-overlay-base']
-    if baseColor then
-      applied = applyOverlaySurface(root, baseColor, profileOrOpacity) or applied
-    end
-  end
+  applied = applyDeclaredOverlay(root, profileOrOpacity) or applied
 
   if type(root.getChildren) == 'function' then
     for _, child in ipairs(root:getChildren()) do
@@ -414,6 +475,10 @@ local function readMobileOption(key, defaultValue, settingGetter)
       return value
     end
   end
+  local prepared = prepareMobileProfileSettings()
+  if prepared and prepared[key] ~= nil then
+    return prepared[key]
+  end
   if g_settings and type(g_settings[settingGetter]) == 'function' then
     return g_settings[settingGetter](key, defaultValue)
   end
@@ -455,6 +520,7 @@ end
 
 function initProfile()
   if profileService then return end
+  prepareMobileProfileSettings()
   profileService = createProfileService(
     readViewportMetrics, bindViewportChanges, unbindViewportChanges)
   profileService.start()
@@ -465,6 +531,7 @@ function terminateProfile()
   profileService.stop()
   profileService = nil
   rootWidget = nil
+  preparedMobileSettings = nil
 end
 
 function refreshProfile()

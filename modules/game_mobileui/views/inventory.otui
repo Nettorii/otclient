@@ -19,7 +19,7 @@ MobileEquipmentItem < UIItem
   $hover:
     border-color: #9fc0d699
 
-MobileInventoryModeButton < UIButton
+MobileInventoryModeButton < MobileOverlayButton
   min-width: 48
   height: 48
   background-color: #101c29ee
@@ -59,7 +59,7 @@ MobileInventoryView < Panel
     phantom: true
     visible: false
 
-  Panel
+  MobileOverlayPanel
     id: inventorySummary
     height: 48
     background-color: #101c29aa

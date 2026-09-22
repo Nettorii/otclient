@@ -1,11 +1,11 @@
-MobileHudSurface < Panel
+MobileHudSurface < MobileOverlayPanel
   background-color: #08121dcc
   mobile-overlay-base: #08121d
   border-width: 1
   border-color: #7891a455
   focusable: false
 
-MobileHudTarget < UIButton
+MobileHudTarget < MobileOverlayButton
   size: 48 48
   background-color: #0b1623dd
   mobile-overlay-base: #0b1623
@@ -60,7 +60,7 @@ MobileHotbarSlot < MobileHudTarget
     color: white
     visible: false
 
-MobileHudStatusBar < UIProgressBar
+MobileHudStatusBar < MobileOverlayProgressBar
   height: 7
   background-color: #02060acc
   mobile-overlay-base: #02060a
