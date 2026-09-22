@@ -60,17 +60,6 @@ local BATTLE_HIDE_OPTIONS = {
     'hideMonks', 'hideSummons', 'hideMembersOwnGuild'
 }
 
-local BATTLE_SORT_OPTIONS = {
-    sortAscByDisplayTime = { type = 'age', order = 'A' },
-    sortDescByDisplayTime = { type = 'age', order = 'D' },
-    sortAscByDistance = { type = 'distance', order = 'A' },
-    sortDescByDistance = { type = 'distance', order = 'D' },
-    sortAscByHitPoints = { type = 'health', order = 'A' },
-    sortDescByHitPoints = { type = 'health', order = 'D' },
-    sortAscByName = { type = 'name', order = 'A' },
-    sortDescByName = { type = 'name', order = 'D' }
-}
-
 local function battleCall(object, method, ...)
     if not object then
         return false, nil
@@ -135,9 +124,8 @@ local function currentBattleSpectators()
     return ok and type(spectators) == 'table' and spectators or {}
 end
 
-local function rememberBattleAge(creature)
-    local ok, id = battleCall(creature, 'getId')
-    if not ok or type(id) ~= 'number' then
+local function rememberBattleAge(id)
+    if type(id) ~= 'number' then
         return nil
     end
     if battleAges[id] == nil then
@@ -240,6 +228,7 @@ function getBattleSnapshot()
     local following = g_game.getFollowingCreature()
     local attackingOk, attackingId = battleCall(attacking, 'getId')
     local followingOk, followingId = battleCall(following, 'getId')
+    local displayedIds = {}
     for _, creature in ipairs(currentBattleSpectators()) do
         local fits = false
         if mainInstance then
@@ -258,6 +247,7 @@ function getBattleSnapshot()
                 battleCall(creature, 'getPosition')
             if idOk and nameOk and creaturePositionOk and
                 type(id) == 'number' and creaturePosition then
+                displayedIds[id] = true
                 local outfitOk, outfit = battleCall(creature, 'getOutfit')
                 local visibleOk, visible = battleCall(creature, 'canBeSeen')
                 if type(canBeSeen) == 'function' then
@@ -274,12 +264,17 @@ function getBattleSnapshot()
                     outfit = outfitOk and battleValueCopy(outfit) or nil,
                     position = battleValueCopy(creaturePosition),
                     distance = battleDistance(playerPosition, creaturePosition),
-                    age = rememberBattleAge(creature),
+                    age = rememberBattleAge(id),
                     currentTarget = attackingOk and attackingId == id or false,
                     following = followingOk and followingId == id or false,
                     visible = visibleOk and visible == true or false
                 }
             end
+        end
+    end
+    for id in pairs(battleAges) do
+        if not displayedIds[id] then
+            battleAges[id] = nil
         end
     end
     battleSortRows(snapshot.rows, sortType, sortOrder)
@@ -436,12 +431,58 @@ end
 
 function openBattleCreatureContext(id, position)
     local creature = currentBattleCreature(id)
-    local interface = modules and modules.game_interface
-    if not creature or type(position) ~= 'table' or not interface or
-        type(interface.createThingMenu) ~= 'function' then
+    if not creature then
         return false
     end
-    interface.createThingMenu(position, nil, nil, creature)
+    local _, name = battleCall(creature, 'getName')
+    local _, creatureId = battleCall(creature, 'getId')
+    local attacking = g_game.getAttackingCreature()
+    local following = g_game.getFollowingCreature()
+    local _, attackingId = battleCall(attacking, 'getId')
+    local _, followingId = battleCall(following, 'getId')
+    return {
+        id = creatureId,
+        name = tostring(name or ''),
+        player = battleBoolean(creature, 'isPlayer'),
+        attacking = attackingId == creatureId,
+        following = followingId == creatureId
+    }
+end
+
+function performBattleCreatureAction(id, action)
+    local creature = currentBattleCreature(id)
+    if not creature or type(action) ~= 'string' then
+        return false
+    end
+    if action == 'attack' then
+        g_game.attack(creature)
+    elseif action == 'follow' then
+        g_game.follow(creature)
+    elseif action == 'stopAttack' then
+        local attacking = g_game.getAttackingCreature()
+        local ok, attackingId = battleCall(attacking, 'getId')
+        if not ok or attackingId ~= tonumber(id) then
+            return false
+        end
+        g_game.cancelAttack()
+    elseif action == 'stopFollow' then
+        local following = g_game.getFollowingCreature()
+        local ok, followingId = battleCall(following, 'getId')
+        if not ok or followingId ~= tonumber(id) then
+            return false
+        end
+        g_game.cancelFollow()
+    elseif action == 'look' then
+        g_game.look(creature)
+    elseif action == 'message' and battleBoolean(creature, 'isPlayer') then
+        local ok, name = battleCall(creature, 'getName')
+        if not ok or tostring(name or '') == '' then
+            return false
+        end
+        g_game.openPrivateChannel(name)
+    else
+        return false
+    end
     return true
 end
 
@@ -459,9 +500,9 @@ function toggleBattleOption(option)
         accepted = instance:setFilter(option) == true
     end
     if accepted then
-        publishBattleChange('filter')
+        return true
     end
-    return accepted
+    return false
 end
 
 local battleSemanticCreatureCallbacks = {
@@ -469,6 +510,12 @@ local battleSemanticCreatureCallbacks = {
         publishBattleChange('filter', creature and creature:getId() or nil)
     end,
     onEmblemChange = function(creature)
+        publishBattleChange('filter', creature and creature:getId() or nil)
+    end,
+    onShieldChange = function(creature)
+        publishBattleChange('filter', creature and creature:getId() or nil)
+    end,
+    onTypeChange = function(creature)
         publishBattleChange('filter', creature and creature:getId() or nil)
     end,
     onOutfitChange = function(creature)
@@ -481,7 +528,6 @@ local battleSemanticCreatureCallbacks = {
         publishBattleChange('position', creature and creature:getId() or nil)
     end,
     onAppear = function(creature)
-        rememberBattleAge(creature)
         publishBattleChange('add', creature and creature:getId() or nil)
     end,
     onDisappear = function(creature)
@@ -514,9 +560,6 @@ function startBattleSemanticEvents()
     connect(Creature, battleSemanticCreatureCallbacks)
     connect(LocalPlayer, battleSemanticPlayerCallbacks)
     connect(UIMap, battleSemanticMapCallbacks)
-    for _, creature in ipairs(currentBattleSpectators()) do
-        rememberBattleAge(creature)
-    end
     publishBattleChange('start')
 end
 
@@ -1062,7 +1105,7 @@ function BattleListInstance:setFilter(filter)
     scheduleEvent(function()
         self:checkCreatures()
     end, 50)
-    
+    publishBattleChange('filter')
     return true
 end
 
@@ -1090,6 +1133,7 @@ function BattleListInstance:setSortType(state, oldSortType)
     g_settings.mergeNode(self:getSettingsKey(), { ['sortType'] = state })
     local order = self:getSortOrder()
     self:reSort(oldSortType, state, order, order)
+    publishBattleChange('sort')
 end
 
 function BattleListInstance:getSortOrder()
@@ -1107,6 +1151,7 @@ end
 function BattleListInstance:setSortOrder(state, oldSortOrder)
     g_settings.mergeNode(self:getSettingsKey(), { ['sortOrder'] = state })
     self:reSort(false, false, oldSortOrder, state)
+    publishBattleChange('sort')
 end
 
 function BattleListInstance:isSortAsc()
@@ -1246,6 +1291,7 @@ function BattleListInstance:onFilterButtonClick(button)
     button:setChecked(not button:isChecked())
     self:saveHideButtonStates()
     self:checkCreatures()
+    publishBattleChange('filter')
 end
 
 function BattleListInstance:showContextMenu(widget, mousePos, mouseButton)
@@ -1837,7 +1883,7 @@ function setFilter(filter)
     
     filters[filter] = not value
     g_settings.mergeNode('BattleList', { ['filters'] = filters })
-    
+    publishBattleChange('filter')
     return true
 end
 
@@ -2257,6 +2303,7 @@ function setSortType(state, oldSortType) -- Setting the current sort type (dista
         local order = mainInstance:getSortOrder()
         mainInstance:reSort(oldSortType, state, order, order)
     end
+    publishBattleChange('sort')
 end
 
 function onZoomChange()
@@ -2298,6 +2345,7 @@ function setSortOrder(state, oldSortOrder) -- Setting the current sort ordenatio
     if mainInstance then
         mainInstance:reSort(false, false, oldSortOrder, state)
     end
+    publishBattleChange('sort')
 end
 
 function isSortAsc() -- Return true if sorted Asc
@@ -2365,6 +2413,7 @@ function onFilterButtonClick(button)
     for _, instance in pairs(BattleListManager.instances) do
         instance:checkCreatures()
     end
+    publishBattleChange('filter')
 end
 
 function canBeSeen(creature)

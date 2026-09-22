@@ -32,15 +32,83 @@ local SORT_OPTIONS = {
   { id = 'sortDescByName', text = 'Name descending' }
 }
 
-local function menuPosition(widget, position)
-  if position then
-    return position
-  end
-  return widget and widget:getPosition() or { x = 0, y = 0 }
-end
-
 function View:_widget(id)
   return self.root and self.root:recursiveGetChildById(id) or nil
+end
+
+function View:_closeOwnedModal()
+  local session = self.modalSession
+  if not session then
+    return
+  end
+  self.modalSession = nil
+  if session.handle and session.handle:isOpen() then
+    session.handle:close()
+  elseif session.body and not session.body:isDestroyed() then
+    session.body:destroy()
+  end
+end
+
+function View:_showActionSheet(title, actions)
+  local mobileUi = self.mobileUi or modules.client_mobileui
+  if not mobileUi or type(mobileUi.showModal) ~= 'function' then
+    self:_closeOwnedModal()
+    return false
+  end
+
+  local body = g_ui.createWidget('MobileBattleActionSheet')
+  body:setHeight(math.max(ROW_HEIGHT, (#actions + 1) * ROW_HEIGHT))
+  local session = { body = body, opening = true, invoked = false }
+  self.modalSession = session
+  local function close()
+    if session.handle and session.handle:isOpen() then
+      session.handle:close()
+    end
+  end
+  for index, action in ipairs(actions) do
+    local button = g_ui.createWidget('MobileBattleAction', body)
+    button:setId('battleAction_' .. tostring(action.id or index))
+    button:setText(action.text)
+    button.onClick = function()
+      if session.invoked then
+        return true
+      end
+      session.invoked = true
+      local accepted = action.callback()
+      if accepted == false then
+        session.invoked = false
+      else
+        close()
+      end
+      return true
+    end
+  end
+  local cancel = g_ui.createWidget('MobileBattleAction', body)
+  cancel:setId('battleAction_cancel')
+  cancel:setText(tr('Cancel'))
+  cancel.onClick = function()
+    close()
+    return true
+  end
+
+  session.handle = mobileUi.showModal({
+    title = title,
+    body = body,
+    buttons = {},
+    onEscape = close,
+    onClose = function()
+      if self.modalSession == session then
+        self.modalSession = nil
+      end
+    end
+  })
+  session.opening = false
+  if not session.handle or not session.handle:isOpen() then
+    if self.modalSession == session then
+      self.modalSession = nil
+    end
+  end
+  return true
 end
 
 function View:_releaseDynamicGestures()
@@ -62,32 +130,78 @@ function View:_bindDynamic(widget)
   end
 end
 
-function View:_showOptions(widget, position, options)
-  local menu = g_ui.createWidget('PopupMenu')
-  menu:setGameMenu(true)
+function View:_showOptions(title, options)
   local filters = self.snapshot and self.snapshot.filters or {}
+  local actions = {}
   for _, option in ipairs(options) do
     local id = option.id
     local label = tr(option.text)
     if filters[id] then
       label = '[x] ' .. label
     end
-    menu:addOption(label, function()
-      return self.battle.toggleBattleOption(id)
-    end)
+    actions[#actions + 1] = {
+      id = id,
+      text = label,
+      callback = function()
+        return self.battle.toggleBattleOption(id)
+      end
+    }
   end
-  menu:display(menuPosition(widget, position))
-  return true
+  return self:_showActionSheet(title, actions)
+end
+
+function View:_showCreatureContext(id)
+  local context = self.battle.openBattleCreatureContext(id)
+  if type(context) ~= 'table' then
+    return false
+  end
+  local actions = {
+    {
+      id = 'look',
+      text = tr('Look at %s', context.name),
+      callback = function()
+        return self.battle.performBattleCreatureAction(id, 'look')
+      end
+    },
+    {
+      id = context.attacking and 'stopAttack' or 'attack',
+      text = context.attacking and tr('Stop attack') or
+        tr('Attack %s', context.name),
+      callback = function()
+        return self.battle.performBattleCreatureAction(
+          id, context.attacking and 'stopAttack' or 'attack')
+      end
+    },
+    {
+      id = context.following and 'stopFollow' or 'follow',
+      text = context.following and tr('Stop follow') or
+        tr('Follow %s', context.name),
+      callback = function()
+        return self.battle.performBattleCreatureAction(
+          id, context.following and 'stopFollow' or 'follow')
+      end
+    }
+  }
+  if context.player then
+    actions[#actions + 1] = {
+      id = 'message',
+      text = tr('Message to %s', context.name),
+      callback = function()
+        return self.battle.performBattleCreatureAction(id, 'message')
+      end
+    }
+  end
+  return self:_showActionSheet(context.name, actions)
 end
 
 function View:_configureControls()
   local filter = self:_widget('battleFilter')
-  filter.onClick = function(widget, position)
-    return self:_showOptions(widget, position, FILTER_OPTIONS)
+  filter.onClick = function()
+    return self:_showOptions(tr('Battle filters'), FILTER_OPTIONS)
   end
   local sort = self:_widget('battleSort')
-  sort.onClick = function(widget, position)
-    return self:_showOptions(widget, position, SORT_OPTIONS)
+  sort.onClick = function()
+    return self:_showOptions(tr('Battle sort'), SORT_OPTIONS)
   end
 end
 
@@ -111,7 +225,7 @@ function View:_configureRow(row, description)
     row.mobileBattlePressPosition = position
     if button == (MouseRightButton or 2) then
       row.mobileBattleSuppressClick = true
-      return self.battle.openBattleCreatureContext(id, position)
+      return self:_showCreatureContext(id)
     end
     if button ~= (MouseLeftButton or 1) then
       row.mobileBattleSuppressClick = true
@@ -128,8 +242,7 @@ function View:_configureRow(row, description)
     row.mobileBattlePressedAt = nil
     if pressedAt and self.now() - pressedAt >= LONG_PRESS_MILLIS then
       row.mobileBattleSuppressClick = true
-      return self.battle.openBattleCreatureContext(
-        id, position or row.mobileBattlePressPosition)
+      return self:_showCreatureContext(id)
     end
     return false
   end
@@ -202,6 +315,9 @@ function View:onHide()
     self.unsubscribe = nil
   end
   self:_releaseDynamicGestures()
+  if self.modalSession and not self.modalSession.opening then
+    self:_closeOwnedModal()
+  end
 end
 
 function View:destroy()
@@ -225,6 +341,7 @@ function MobileBattle.createDescriptor(options)
   options = options or {}
   local view = setmetatable({
     battle = options.battle or modules.game_battle,
+    mobileUi = options.mobileUi,
     now = options.now or wallMillis,
     dynamicGestureUnbinds = {}
   }, View)

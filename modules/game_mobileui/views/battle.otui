@@ -13,6 +13,28 @@ MobileBattleControl < UIButton
   $pressed:
     background-color: #203a51ee
 
+MobileBattleAction < UIButton
+  height: 56
+  min-height: 56
+  background-color: #101c29ee
+  border-width: 1
+  border-color: #7891a455
+  color: #dbe6ee
+  font: verdana-11px-antialised
+  text-align: center
+  focusable: false
+  phantom: false
+
+  $pressed:
+    background-color: #203a51ee
+
+MobileBattleActionSheet < Panel
+  height: 56
+  phantom: false
+  layout:
+    type: verticalBox
+    spacing: 4
+
 MobileBattleRow < UIButton
   height: 56
   min-height: 56

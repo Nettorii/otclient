@@ -85,6 +85,8 @@ function getVipSnapshot()
         available = available,
         revision = vipRevision,
         groupsAvailable = available and vipFeature(GameVipGroups),
+        canAddGroup = available and vipFeature(GameVipGroups) and
+            maxVipGroups > 0,
         grouped = globalSettings.showGrouped == true,
         hideOffline = globalSettings.hideOfflineVips == true,
         entries = {},
@@ -291,6 +293,16 @@ local function currentVipGroup(id)
     return nil
 end
 
+function getVipEntryById(id)
+    local entry = currentVipEntry(id)
+    return entry and vipValueCopy(entry) or nil
+end
+
+function getVipGroupById(id)
+    local group = currentVipGroup(id)
+    return group and vipValueCopy(group) or nil
+end
+
 local function currentVipWidget(id)
     if not vipWindow or vipWindow:isDestroyed() then
         return nil
@@ -301,10 +313,6 @@ end
 function addVipEntry(name)
     if not getVipSnapshot().available then
         return false
-    end
-    if name == nil then
-        createAddWindow()
-        return true
     end
     if type(name) ~= 'string' or name:match('^%s*$') then
         return false
@@ -322,13 +330,43 @@ function messageVipEntry(id)
     return true
 end
 
-function editVipEntry(id)
+function editVipEntry(id, description, iconId, notify, groups)
     local entry = currentVipEntry(id)
-    local widget = entry and currentVipWidget(entry.id) or nil
-    if not widget or editVipWindow then
+    if not entry or not entry.canEdit or type(description) ~= 'string' or
+        type(notify) ~= 'boolean' then
         return false
     end
-    createEditWindow(widget)
+    iconId = tonumber(iconId)
+    if not iconId or iconId < VipIconFirst or iconId > VipIconLast then
+        return false
+    end
+    local validGroups = {}
+    local knownGroups = {}
+    for _, group in ipairs(getVipSnapshot().groups) do
+        knownGroups[tostring(group.id)] = group.id
+    end
+    for _, groupId in ipairs(type(groups) == 'table' and groups or {}) do
+        local knownId = knownGroups[tostring(groupId)]
+        if knownId ~= nil then
+            validGroups[#validGroups + 1] = knownId
+        end
+    end
+    if vipFeature(GameAdditionalVipInfo) then
+        g_game.editVip(entry.id, description, iconId, notify, validGroups)
+    else
+        if notify or description ~= '' or iconId > 0 then
+            vipInfo[entry.name] = {
+                description = description,
+                iconId = iconId,
+                notifyLogin = notify,
+                vipGroups = validGroups
+            }
+        else
+            vipInfo[entry.name] = nil
+        end
+    end
+    refresh(false)
+    publishVipChange('edit', entry.id)
     return true
 end
 
@@ -339,7 +377,12 @@ function removeVipEntry(id)
     end
     local widget = currentVipWidget(entry.id)
     if widget then
-        removeVip(widget)
+        local name = widget:getText()
+        g_game.removeVip(entry.id)
+        if vipInfo[name:lower()] and vipFeature(GameAdditionalVipInfo) then
+            vipInfo[name:lower()] = nil
+        end
+        refresh(false)
     else
         g_game.removeVip(entry.id)
     end
@@ -348,12 +391,8 @@ function removeVipEntry(id)
 end
 
 function addVipGroup(name)
-    if not getVipSnapshot().groupsAvailable or maxVipGroups < 1 then
+    if not getVipSnapshot().canAddGroup then
         return false
-    end
-    if name == nil then
-        createAddGroupWindow()
-        return true
     end
     if type(name) ~= 'string' or name:match('^%s*$') then
         return false
@@ -367,14 +406,41 @@ function editVipGroup(id, name)
     if not group or not group.editable then
         return false
     end
-    if name == nil then
-        createEditGroupWindow(group.name, group.id)
-        return true
-    end
     if type(name) ~= 'string' or name:match('^%s*$') then
         return false
     end
     g_game.editVipGroups(2, group.id, name)
+    return true
+end
+
+function setVipGrouped(grouped)
+    local snapshot = getVipSnapshot()
+    if not snapshot.groupsAvailable or type(grouped) ~= 'boolean' or
+        globalSettings.showGrouped == grouped then
+        return false
+    end
+    globalSettings.showGrouped = grouped
+    if vipWindow and not vipWindow:isDestroyed() then
+        if grouped then
+            showGroups()
+        else
+            refresh(false)
+        end
+    end
+    publishVipChange('preference')
+    return true
+end
+
+function setVipHideOffline(hidden)
+    if type(hidden) ~= 'boolean' or
+        globalSettings.hideOfflineVips == hidden then
+        return false
+    end
+    globalSettings.hideOfflineVips = hidden
+    if vipWindow and not vipWindow:isDestroyed() then
+        refresh(false)
+    end
+    publishVipChange('preference')
     return true
 end
 
@@ -401,7 +467,7 @@ function controllerVip:onInit()
                                                                 '/images/options/button_vip', toggle, false, 3)
     vipWindow = g_ui.loadUI('viplist')
     controllerVip:registerEvents(g_game, {
-        onAddVip = onAddVip,
+        onAddVip = onVipAddEvent,
         onVipStateChange = onVipStateChange,
         onVipGroupChange = onVipGroupChange
     })
@@ -417,7 +483,7 @@ function controllerVip:onInit()
            end
        end
     end
-    refresh()
+    refresh(false)
     vipWindow:setup()
 
     -- Hide toggleFilterButton and adjust contextMenuButton anchors
@@ -460,8 +526,10 @@ function controllerVip:onInit()
 end
 
 function controllerVip:onTerminate()
-    vipSemanticAvailable = false
-    publishVipChange('terminate')
+    if vipSemanticAvailable then
+        vipSemanticAvailable = false
+        publishVipChange('terminate')
+    end
     Keybind.delete("Windows", "Show/hide VIP list")
     local ArrayWidgets = {addVipWindow, editVipWindow, vipWindow, vipButton, addGroupWindow}
     for _, widget in ipairs(ArrayWidgets) do
@@ -485,14 +553,16 @@ function controllerVip:onGameStart()
         vipInfo = {}
     end
     vipWindow:setupOnStart() -- load character window configuration
-    refresh()
+    refresh(false)
     publishVipChange('start')
     vipButton:setOn(vipButton:isOn())
 end
 
 function controllerVip:onGameEnd()
-    vipSemanticAvailable = false
-    publishVipChange('end')
+    if vipSemanticAvailable then
+        vipSemanticAvailable = false
+        publishVipChange('end')
+    end
     local settings = {}
     settings['Grouped'] = globalSettings.showGrouped or false
     settings['OfflineVips'] = globalSettings.hideOfflineVips or false
@@ -534,13 +604,16 @@ function saveVipInfo()
     end
 end
 
-function refresh()
+function refresh(shouldPublish)
     clear()
     for id, vip in pairs(g_game.getVips()) do
         onAddVip(id, unpack(vip))
     end
 
     vipWindow:setContentMinimumHeight(38)
+    if shouldPublish ~= false then
+        publishVipChange('refresh')
+    end
 end
 
 function clear()
@@ -717,6 +790,7 @@ function createEditWindow(widget)
 
         widget:destroy()
         onAddVip(id, name, state, description, iconId, notify, groups, nil)
+        publishVipChange('edit', tonumber(id) or id)
         
         if iconRadioGroup then
             iconRadioGroup:destroy()
@@ -795,8 +869,7 @@ function removeVip(widgetOrName)
 end
 
 function hideOffline(state)
-    globalSettings.hideOfflineVips = state
-    refresh()
+    return setVipHideOffline(state)
 end
 
 function isHiddingOffline()
@@ -822,7 +895,7 @@ function getSortedBy()
     end
 end
 
-function sortBy(state)
+function sortBy(state, shouldPublish)
     if not g_game.getFeature(GameAdditionalVipInfo) then
         local settings = {}
         settings['sortedBy'] = state
@@ -855,6 +928,9 @@ function sortBy(state)
         end
     end
     contentPanel:updateLayout()
+    if shouldPublish ~= false then
+        publishVipChange('sort')
+    end
 end
 
 function compareVips(a, b)
@@ -883,7 +959,6 @@ function compareVips(a, b)
 end
 
 function onAddVip(id, name, state, description, iconId, notify, groupID, bool)
-    publishVipChange('add', id)
     if g_game.getFeature(GameAdditionalVipInfo) then
         vipInfo[name] = {
             playerId = id,
@@ -1001,8 +1076,13 @@ function onAddVip(id, name, state, description, iconId, notify, groupID, bool)
     vipList:insertChild(childrenCount + 1, label)
 end
 
+function onVipAddEvent(id, name, state, description, iconId, notify, groupID,
+                       bool)
+    onAddVip(id, name, state, description, iconId, notify, groupID, bool)
+    publishVipChange('add', id)
+end
+
 function onVipStateChange(id, state, groupID)
-    publishVipChange('state', id)
     if g_game.getFeature(GameVipGroups) and globalSettings.showGrouped then
         local name, description, iconId, notify = searchPlayerbyId(id)
         onAddVip(id, name, state, description, iconId, notify, groupID, true)
@@ -1022,6 +1102,7 @@ function onVipStateChange(id, state, groupID)
         modules.game_textmessage.displayFailureMessage(state == VipState.Online and tr('%s has logged in.', name) or
                                                            tr('%s has logged out.', name))
     end
+    publishVipChange('state', id)
 end
 
 function onVipListMousePress(widget, mousePos, mouseButton)
@@ -1077,13 +1158,11 @@ function onVipListMousePress(widget, mousePos, mouseButton)
     if g_game.getFeature(GameVipGroups) then
         if not globalSettings.showGrouped then
             menu:addOption(tr('Show groups'), function()
-                globalSettings.showGrouped = true
-                showGroups()
+                setVipGrouped(true)
             end)
         else
             menu:addOption(tr('Hide groups'), function()
-                globalSettings.showGrouped = false
-                refresh()
+                setVipGrouped(false)
             end)
         end
     end
@@ -1200,13 +1279,11 @@ function onVipListLabelMousePress(widget, mousePos, mouseButton)
     if g_game.getFeature(GameVipGroups) then
         if not globalSettings.showGrouped then
             menu:addOption(tr('Show groups'), function()
-                globalSettings.showGrouped = true
-                showGroups()
+                setVipGrouped(true)
             end)
         else
             menu:addOption(tr('Hide groups'), function()
-                globalSettings.showGrouped = false
-                refresh()
+                setVipGrouped(false)
             end)
         end
     end
@@ -1251,8 +1328,8 @@ function onVipGroupChange(vipGroupsArray, groupsAmountLeft)
     vipGroups = vipGroupsArray
     maxVipGroups = groupsAmountLeft
     editableGroupCount = groupsAmountLeft
+    refresh(false)
     publishVipChange('group')
-    refresh()
 end
 
 function createAddGroupWindow()
@@ -1485,7 +1562,7 @@ function showGroups(sortType)
         end
     end
     -- contentsPanel:updateLayout()
-    sortBy(getSortedBy())
+    sortBy(getSortedBy(), false)
 end
 
 function setVipState(widget, vipState)
