@@ -4,6 +4,179 @@ local inventoryShrink = false
 
 local pvpModeRadioGroup = nil 
 local monkMirrorItem = nil
+local inventoryObservers = {}
+local nextInventoryObserverId = 0
+local inventoryRevision = 0
+local inventoryDispatching = false
+local pendingInventoryChange = nil
+local inventoryNotificationsMuted = false
+local inventoryAvailable = g_game.isOnline() == true
+
+local function inventorySlotSnapshot(player, slot)
+    return {
+        slot = slot,
+        item = player and player:getInventoryItem(slot) or nil
+    }
+end
+
+local function cloneInventorySnapshot(snapshot)
+    local copy = {
+        available = snapshot.available,
+        capacity = snapshot.capacity,
+        totalCapacity = snapshot.totalCapacity,
+        soul = snapshot.soul,
+        fightMode = snapshot.fightMode,
+        chaseMode = snapshot.chaseMode,
+        safeFight = snapshot.safeFight,
+        pvpMode = snapshot.pvpMode,
+        pvpModeAvailable = snapshot.pvpModeAvailable,
+        purseAvailable = snapshot.purseAvailable,
+        revision = snapshot.revision,
+        slots = {}
+    }
+    for index, slot in ipairs(snapshot.slots) do
+        copy.slots[index] = {
+            slot = slot.slot,
+            item = slot.item
+        }
+    end
+    return copy
+end
+
+function getInventorySnapshot()
+    local player = g_game.getLocalPlayer()
+    local available = inventoryAvailable and g_game.isOnline() and player ~= nil
+    local snapshot = {
+        available = available,
+        capacity = available and player:getFreeCapacity() or 0,
+        totalCapacity = available and player:getTotalCapacity() or 0,
+        soul = available and player:getSoul() or 0,
+        fightMode = available and g_game.getFightMode() or nil,
+        chaseMode = available and g_game.getChaseMode() or nil,
+        safeFight = available and g_game.isSafeFight() or false,
+        pvpMode = available and g_game.getFeature(GamePVPMode) and
+            g_game.getPVPMode() or nil,
+        pvpModeAvailable = available and g_game.getFeature(GamePVPMode),
+        purseAvailable = available and g_game.getFeature(GamePurseSlot),
+        revision = inventoryRevision,
+        slots = {}
+    }
+    for slot = InventorySlotFirst, InventorySlotPurse do
+        snapshot.slots[#snapshot.slots + 1] =
+            inventorySlotSnapshot(available and player or nil, slot)
+    end
+    return snapshot
+end
+
+function subscribeInventory(callback)
+    assert(type(callback) == 'function',
+        'inventory callback must be a function')
+    nextInventoryObserverId = nextInventoryObserverId + 1
+    local observerId = nextInventoryObserverId
+    inventoryObservers[observerId] = callback
+    local subscribed = true
+    return function()
+        if not subscribed then
+            return
+        end
+        subscribed = false
+        inventoryObservers[observerId] = nil
+    end
+end
+
+local function notifyInventory(changeType, slot)
+    if inventoryNotificationsMuted then
+        return false
+    end
+    inventoryRevision = inventoryRevision + 1
+    pendingInventoryChange = {
+        type = changeType,
+        slot = slot,
+        revision = inventoryRevision
+    }
+    if inventoryDispatching then
+        return true
+    end
+
+    inventoryDispatching = true
+    local ok, dispatchError = pcall(function()
+        while pendingInventoryChange do
+            local change = pendingInventoryChange
+            pendingInventoryChange = nil
+            local snapshot = getInventorySnapshot()
+            local observers = {}
+            for observerId, callback in pairs(inventoryObservers) do
+                observers[#observers + 1] = {
+                    id = observerId,
+                    callback = callback
+                }
+            end
+            table.sort(observers, function(left, right)
+                return left.id < right.id
+            end)
+            for _, observer in ipairs(observers) do
+                if inventoryObservers[observer.id] == observer.callback then
+                    observer.callback(cloneInventorySnapshot(snapshot), {
+                        type = change.type,
+                        slot = change.slot,
+                        revision = change.revision
+                    })
+                end
+                if inventoryRevision ~= change.revision then
+                    break
+                end
+            end
+        end
+    end)
+    inventoryDispatching = false
+    pendingInventoryChange = nil
+    if not ok then
+        error(dispatchError, 0)
+    end
+    return true
+end
+
+local function inventoryCommandsAvailable()
+    return getInventorySnapshot().available
+end
+
+function setInventoryFightMode(mode)
+    if not inventoryCommandsAvailable() or
+        (mode ~= FightOffensive and mode ~= FightBalanced and
+            mode ~= FightDefensive) then
+        return false
+    end
+    g_game.setFightMode(mode)
+    return true
+end
+
+function setInventoryChaseMode(mode)
+    if not inventoryCommandsAvailable() or
+        (mode ~= DontChase and mode ~= ChaseOpponent) then
+        return false
+    end
+    g_game.setChaseMode(mode)
+    return true
+end
+
+function setInventorySafeFight(enabled)
+    if not inventoryCommandsAvailable() or type(enabled) ~= 'boolean' then
+        return false
+    end
+    g_game.setSafeFight(enabled)
+    return true
+end
+
+function setInventoryPVPMode(mode)
+    if not inventoryCommandsAvailable() or
+        not g_game.getFeature(GamePVPMode) or
+        (mode ~= PVPWhiteDove and mode ~= PVPWhiteHand and
+            mode ~= PVPYellowHand and mode ~= PVPRedFist) then
+        return false
+    end
+    g_game.setPVPMode(mode)
+    return true
+end
 
 local function getInventoryUi()
     if inventoryShrink then
@@ -97,6 +270,7 @@ local function walkEvent()
 end
 
 local function combatEvent()
+    notifyInventory('combat')
     if g_game.getChaseMode() == ChaseOpponent then
         selectPosture('follow', true)
     else
@@ -113,6 +287,7 @@ local function combatEvent()
 end
 
 local function inventoryEvent(player, slot, item, oldItem)
+    notifyInventory('inventory', slot)
     if inventoryShrink then
         return
     end
@@ -157,6 +332,7 @@ local function inventoryEvent(player, slot, item, oldItem)
 end
 
 local function onSoulChange(localPlayer, soul)
+    notifyInventory('soul')
     local ui = getInventoryUi()
     if not localPlayer then
         return
@@ -175,6 +351,7 @@ local function onSoulChange(localPlayer, soul)
 end
 
 local function onFreeCapacityChange(player, freeCapacity)
+    notifyInventory('capacity')
     if not player then
         return
     end
@@ -283,6 +460,8 @@ function inventoryController:onInit()
 end
 
 function inventoryController:onGameStart()
+    inventoryNotificationsMuted = true
+    inventoryAvailable = true
     local player = g_game.getLocalPlayer()
     if player then
         local char = g_game.getCharacterName()
@@ -347,9 +526,13 @@ function inventoryController:onGameStart()
             updateMonkMirrorItem(leftItem)
         end
     end
+    inventoryNotificationsMuted = false
+    notifyInventory('start')
 end
 
 function inventoryController:onGameEnd()
+    inventoryAvailable = false
+    notifyInventory('end')
     monkMirrorItem = nil
 
     local lastCombatControls = g_settings.getNode('LastCombatControls')
@@ -373,6 +556,9 @@ function inventoryController:onGameEnd()
 end
 
 function inventoryController:onTerminate()
+    inventoryObservers = {}
+    pendingInventoryChange = nil
+    inventoryDispatching = false
     if iconTopMenu then
         iconTopMenu:destroy()
         iconTopMenu = nil

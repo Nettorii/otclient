@@ -1,0 +1,158 @@
+MobileContainerTab < UIButton
+  width: 112
+  min-width: 48
+  height: 48
+  background-color: #101c29ee
+  border-width: 1
+  border-color: #7891a455
+  color: #dbe6ee
+  font: verdana-11px-antialised
+  text-align: center
+  text-wrap: true
+  focusable: false
+  phantom: false
+
+  $on:
+    background-color: #284863ee
+    border-color: #a8c8dcaa
+
+MobileContainerAction < UIButton
+  min-width: 48
+  height: 48
+  background-color: #101c29ee
+  border-width: 1
+  border-color: #7891a455
+  color: #dbe6ee
+  font: verdana-11px-antialised
+  text-align: center
+  focusable: false
+  phantom: false
+
+  $pressed:
+    background-color: #203a51ee
+
+MobileContainerItem < UIItem
+  size: 48 48
+  padding: 3
+  image-source: /images/ui/item
+  border-color: #7891a466
+  border-width: 1
+  color: white
+  font: verdana-11px-rounded
+  focusable: false
+  phantom: false
+
+  $hover:
+    border-color: #9fc0d699
+
+MobileContainerSection < Panel
+  height: 242
+  focusable: false
+  phantom: false
+  layout:
+    type: verticalBox
+    spacing: 4
+
+  MobileInventorySectionTitle
+    text: Containers
+
+  UIScrollArea
+    id: containerStack
+    height: 48
+    horizontal-scrollbar: containerStackScrollBar
+    clipping: true
+    phantom: false
+    layout:
+      type: horizontalBox
+      spacing: 4
+
+  HorizontalScrollBar
+    id: containerStackScrollBar
+    height: 0
+    visible: false
+    step: 48
+    pixels-scroll: true
+
+  Label
+    id: containersEmpty
+    height: 48
+    text: No open containers
+    color: #8fa9ba
+    font: verdana-11px-antialised
+    text-align: center
+    phantom: true
+
+  Panel
+    id: containerDetails
+    height: 158
+    phantom: false
+    layout:
+      type: verticalBox
+      spacing: 4
+
+    Panel
+      height: 48
+      phantom: false
+
+      MobileContainerAction
+        id: containerBack
+        anchors.left: parent.left
+        anchors.top: parent.top
+        width: 48
+        text: <
+
+      Label
+        id: containerBreadcrumb
+        anchors.left: containerBack.right
+        anchors.right: containerClose.left
+        anchors.top: parent.top
+        anchors.bottom: parent.bottom
+        margin-left: 5
+        margin-right: 5
+        color: #dbe6ee
+        font: verdana-11px-antialised
+        text-align: center
+        text-wrap: true
+        phantom: true
+
+      MobileContainerAction
+        id: containerClose
+        anchors.right: parent.right
+        anchors.top: parent.top
+        width: 48
+        text: X
+
+    Panel
+      height: 48
+      phantom: false
+      layout:
+        type: horizontalBox
+        spacing: 4
+
+      MobileContainerAction
+        id: containerPrevious
+        width: 48
+        text: <
+
+      Label
+        id: containerPage
+        height: 48
+        color: #b9c9d5
+        font: verdana-11px-antialised
+        text-align: center
+        phantom: true
+
+      MobileContainerAction
+        id: containerNext
+        width: 48
+        text: >
+
+    Panel
+      id: containerItems
+      height: 52
+      phantom: false
+      layout:
+        type: grid
+        cell-size: 48 48
+        cell-spacing: 4
+        flow: true

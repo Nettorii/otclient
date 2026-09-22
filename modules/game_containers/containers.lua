@@ -1,5 +1,210 @@
 containerSettings = nil
 
+local containerObservers = {}
+local nextContainerObserverId = 0
+local containerRevision = 0
+local containerDispatching = false
+local pendingContainerChange = nil
+
+local function containerSnapshot(container)
+    local capacity = math.max(0, tonumber(container:getCapacity()) or 0)
+    local size = math.max(0, tonumber(container:getSize()) or 0)
+    local firstIndex = math.max(
+        0, tonumber(container:getFirstIndex()) or 0)
+    local hasPages = container:hasPages() == true
+    local pageCount = capacity > 0 and
+        1 + math.floor(math.max(0, size - 1) / capacity) or 1
+    local currentPage = capacity > 0 and
+        1 + math.floor(firstIndex / capacity) or 1
+    local items = {}
+    for slot = 0, capacity - 1 do
+        items[#items + 1] = {
+            slot = slot,
+            index = firstIndex + slot,
+            item = container:getItem(slot),
+            position = container:getSlotPosition(slot)
+        }
+    end
+    local hasParent = container:hasParent() == true
+    return {
+        id = container:getId(),
+        name = container:getName() or '',
+        capacity = capacity,
+        size = size,
+        itemCount = math.max(
+            0, tonumber(container:getItemsCount()) or 0),
+        items = items,
+        parent = hasParent,
+        canGoBack = hasParent,
+        page = {
+            enabled = hasPages,
+            firstIndex = firstIndex,
+            current = currentPage,
+            total = pageCount,
+            canPrevious = hasPages and firstIndex > 0,
+            canNext = hasPages and firstIndex + capacity < size
+        }
+    }
+end
+
+local function cloneContainerSnapshot(snapshot)
+    local copy = {
+        id = snapshot.id,
+        name = snapshot.name,
+        capacity = snapshot.capacity,
+        size = snapshot.size,
+        itemCount = snapshot.itemCount,
+        parent = snapshot.parent,
+        canGoBack = snapshot.canGoBack,
+        page = {
+            enabled = snapshot.page.enabled,
+            firstIndex = snapshot.page.firstIndex,
+            current = snapshot.page.current,
+            total = snapshot.page.total,
+            canPrevious = snapshot.page.canPrevious,
+            canNext = snapshot.page.canNext
+        },
+        items = {}
+    }
+    for index, item in ipairs(snapshot.items) do
+        copy.items[index] = {
+            slot = item.slot,
+            index = item.index,
+            item = item.item,
+            position = item.position
+        }
+    end
+    return copy
+end
+
+local function cloneContainerSnapshots(snapshots)
+    local copies = {}
+    for index, snapshot in ipairs(snapshots) do
+        copies[index] = cloneContainerSnapshot(snapshot)
+    end
+    copies.revision = snapshots.revision
+    return copies
+end
+
+function getOpenContainerSnapshots()
+    local snapshots = {}
+    for _, container in pairs(g_game.getContainers()) do
+        if container and
+            (not container.isClosed or not container:isClosed()) then
+            snapshots[#snapshots + 1] = containerSnapshot(container)
+        end
+    end
+    table.sort(snapshots, function(left, right)
+        return left.id < right.id
+    end)
+    snapshots.revision = containerRevision
+    return snapshots
+end
+
+function subscribeContainers(callback)
+    assert(type(callback) == 'function',
+        'container callback must be a function')
+    nextContainerObserverId = nextContainerObserverId + 1
+    local observerId = nextContainerObserverId
+    containerObservers[observerId] = callback
+    local subscribed = true
+    return function()
+        if not subscribed then
+            return
+        end
+        subscribed = false
+        containerObservers[observerId] = nil
+    end
+end
+
+local function notifyContainers(changeType, container, slot)
+    containerRevision = containerRevision + 1
+    pendingContainerChange = {
+        type = changeType,
+        containerId = container and container:getId() or nil,
+        slot = slot,
+        revision = containerRevision
+    }
+    if containerDispatching then
+        return true
+    end
+
+    containerDispatching = true
+    local ok, dispatchError = pcall(function()
+        while pendingContainerChange do
+            local change = pendingContainerChange
+            pendingContainerChange = nil
+            local snapshots = getOpenContainerSnapshots()
+            local observers = {}
+            for observerId, callback in pairs(containerObservers) do
+                observers[#observers + 1] = {
+                    id = observerId,
+                    callback = callback
+                }
+            end
+            table.sort(observers, function(left, right)
+                return left.id < right.id
+            end)
+            for _, observer in ipairs(observers) do
+                if containerObservers[observer.id] == observer.callback then
+                    observer.callback(cloneContainerSnapshots(snapshots), {
+                        type = change.type,
+                        containerId = change.containerId,
+                        slot = change.slot,
+                        revision = change.revision
+                    })
+                end
+                if containerRevision ~= change.revision then
+                    break
+                end
+            end
+        end
+    end)
+    containerDispatching = false
+    pendingContainerChange = nil
+    if not ok then
+        error(dispatchError, 0)
+    end
+    return true
+end
+
+local function openContainerById(containerId)
+    containerId = tonumber(containerId)
+    if not containerId then
+        return nil
+    end
+    return g_game.getContainer(containerId)
+end
+
+function openParentContainer(containerId)
+    local container = openContainerById(containerId)
+    if not container or not container:hasParent() then
+        return false
+    end
+    g_game.openParent(container)
+    return true
+end
+
+function seekContainerPage(containerId, firstIndex)
+    local container = openContainerById(containerId)
+    firstIndex = tonumber(firstIndex)
+    if not container or not container:hasPages() or not firstIndex or
+        firstIndex < 0 then
+        return false
+    end
+    g_game.seekInContainer(container:getId(), math.floor(firstIndex))
+    return true
+end
+
+function closeContainer(containerId)
+    local container = openContainerById(containerId)
+    if not container then
+        return false
+    end
+    g_game.close(container)
+    return true
+end
+
 -- Local addition: remember which side panel (and slot) each bag was docked in,
 -- keyed per character by the bag's item id and its opening order, so that
 -- bags reopened after a relog/death go back where they were instead of being
@@ -179,6 +384,9 @@ function terminate()
         removeEvent(placementEvent)
         placementEvent = nil
     end
+    containerObservers = {}
+    pendingContainerChange = nil
+    containerDispatching = false
 end
 
 function reloadContainers()
@@ -1275,13 +1483,22 @@ function onContainerOpen(container, previousContainer)
     if currentSortMode and currentSortMode ~= 'none' and not isManualSortEnabled then
         sortContainerItems(container, currentSortMode)
     end
+    local changeType = previousContainer and
+        previousContainer:getFirstIndex() ~= container:getFirstIndex() and
+        'page' or 'open'
+    notifyContainers(changeType, container)
 end
 
 function onContainerClose(container)
     destroy(container)
+    local current = g_game.getContainer(container:getId())
+    if not current or current == container then
+        notifyContainers('close', container)
+    end
 end
 
 function onContainerChangeSize(container, size)
+    notifyContainers('resize', container)
     if not container.window then
         return
     end
@@ -1299,6 +1516,7 @@ function onContainerChangeSize(container, size)
 end
 
 function onContainerUpdateItem(container, slot, item, oldItem)
+    notifyContainers('update', container, slot)
     if not container.window then
         return
     end

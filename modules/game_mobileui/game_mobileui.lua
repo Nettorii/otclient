@@ -10,6 +10,7 @@ local actionAdapter
 local hotbarAdapter
 local drawerHost
 local placeholderUnregisters = {}
+local drawerViewUnregisters = {}
 local unsubscribeProfile
 local layoutEvent
 local windowCallbacks
@@ -577,9 +578,23 @@ local function registerPlaceholderDrawerViews()
       end
     })
     if type(unregister) == 'function' then
-      placeholderUnregisters[#placeholderUnregisters + 1] = unregister
+      placeholderUnregisters[viewId] = unregister
     end
   end
+end
+
+local function replacePlaceholderDrawerView(id, descriptor)
+  local unregisterPlaceholder = placeholderUnregisters[id]
+  if unregisterPlaceholder then
+    placeholderUnregisters[id] = nil
+    unregisterPlaceholder()
+  end
+  local unregister = registerDrawerView(id, descriptor)
+  if type(unregister) ~= 'function' then
+    return false
+  end
+  drawerViewUnregisters[id] = unregister
+  return true
 end
 
 function runSelfTests()
@@ -714,6 +729,8 @@ function init()
 
   g_ui.importStyle('styles.otui')
   g_ui.importStyle('drawer.otui')
+  g_ui.importStyle('views/inventory.otui')
+  g_ui.importStyle('views/container.otui')
   hud = g_ui.displayUI('game_mobileui')
   status = hud:getChildById('status')
   menu = hud:getChildById('menu')
@@ -749,6 +766,10 @@ function init()
   })
   configureDrawerHandle(drawerHandle)
   registerPlaceholderDrawerViews()
+  if MobileInventory then
+    replacePlaceholderDrawerView('inventory',
+      MobileInventory.createDescriptor())
+  end
 
   gameActive = false
   controlsFit = false
@@ -786,6 +807,7 @@ function terminate()
     drawerHost = nil
   end
   placeholderUnregisters = {}
+  drawerViewUnregisters = {}
 
   disconnect(g_game, {
     onGameStart = onGameStart,

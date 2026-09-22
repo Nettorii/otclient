@@ -1,0 +1,179 @@
+MobileInventorySectionTitle < Label
+  height: 24
+  color: #b9c9d5
+  font: verdana-11px-antialised
+  text-align: left
+  phantom: true
+
+MobileEquipmentItem < UIItem
+  size: 48 48
+  padding: 3
+  image-source: /images/ui/item
+  border-color: #7891a466
+  border-width: 1
+  color: white
+  font: verdana-11px-rounded
+  focusable: false
+  phantom: false
+
+  $hover:
+    border-color: #9fc0d699
+
+MobileInventoryModeButton < UIButton
+  min-width: 48
+  height: 48
+  background-color: #101c29ee
+  border-width: 1
+  border-color: #7891a455
+  color: #dbe6ee
+  font: verdana-11px-antialised
+  text-align: center
+  focusable: false
+  phantom: false
+
+  $on:
+    background-color: #284863ee
+    border-color: #a8c8dcaa
+    color: #ffffff
+
+  $pressed:
+    background-color: #203a51ee
+
+MobileInventoryView < Panel
+  height: 760
+  anchors.left: parent.left
+  anchors.right: parent.right
+  focusable: false
+  phantom: false
+  layout:
+    type: verticalBox
+    spacing: 6
+
+  Label
+    id: inventoryUnavailable
+    height: 48
+    text: Inventory unavailable
+    color: #d7a7a7
+    font: verdana-11px-antialised
+    text-align: center
+    phantom: true
+    visible: false
+
+  Panel
+    id: inventorySummary
+    height: 48
+    background-color: #101c29aa
+    border-width: 1
+    border-color: #7891a444
+    phantom: false
+
+    Label
+      id: capacityValue
+      anchors.left: parent.left
+      anchors.verticalCenter: parent.verticalCenter
+      margin-left: 10
+      width: 145
+      color: #d7d9c3
+      font: verdana-11px-antialised
+      text-align: left
+      phantom: true
+
+    Label
+      id: soulValue
+      anchors.right: parent.right
+      anchors.verticalCenter: parent.verticalCenter
+      margin-right: 10
+      width: 90
+      color: #d9c3e9
+      font: verdana-11px-antialised
+      text-align: right
+      phantom: true
+
+  MobileInventorySectionTitle
+    text: Equipment
+
+  Panel
+    id: equipmentGrid
+    height: 152
+    phantom: false
+    layout:
+      type: grid
+      cell-size: 48 48
+      cell-spacing: 4
+      flow: true
+
+  Panel
+    id: combatSection
+    height: 216
+    phantom: false
+    layout:
+      type: verticalBox
+      spacing: 4
+
+    MobileInventorySectionTitle
+      text: Fight mode
+
+    Panel
+      height: 48
+      phantom: false
+      layout:
+        type: horizontalBox
+        spacing: 4
+
+      MobileInventoryModeButton
+        id: fightOffensive
+        text: Attack
+
+      MobileInventoryModeButton
+        id: fightBalanced
+        text: Balanced
+
+      MobileInventoryModeButton
+        id: fightDefensive
+        text: Defend
+
+    Panel
+      height: 48
+      phantom: false
+      layout:
+        type: horizontalBox
+        spacing: 4
+
+      MobileInventoryModeButton
+        id: chaseStand
+        text: Stand
+
+      MobileInventoryModeButton
+        id: chaseFollow
+        text: Follow
+
+      MobileInventoryModeButton
+        id: safeFight
+        text: Safe
+
+    Panel
+      id: pvpModes
+      height: 48
+      phantom: false
+      layout:
+        type: horizontalBox
+        spacing: 4
+
+      MobileInventoryModeButton
+        id: pvpDove
+        text: Dove
+
+      MobileInventoryModeButton
+        id: pvpWhiteHand
+        text: White
+
+      MobileInventoryModeButton
+        id: pvpYellowHand
+        text: Yellow
+
+      MobileInventoryModeButton
+        id: pvpRedFist
+        text: Red
+
+  MobileContainerSection
+    id: containersSection
