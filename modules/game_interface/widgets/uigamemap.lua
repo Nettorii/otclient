@@ -98,8 +98,52 @@ function UIGameMap:onMousePress()
     end
 end
 
+function UIGameMap:cancelPendingRelease()
+    self.allowNextRelease = false
+end
+
 function UIGameMap:onMouseMove()
     return false
+end
+
+local function topEligibleWidgetAt(widget, mousePosition, checkContainsPoint)
+    if widget:isClipping() and
+        not widget:containsPaddingPoint(mousePosition) then
+        return nil
+    end
+
+    for index = widget:getChildCount(), 1, -1 do
+        local child = widget:getChildByIndex(index)
+        if child:isExplicitlyEnabled() and child:isExplicitlyVisible() then
+            local eligible = topEligibleWidgetAt(child, mousePosition, true)
+            if eligible then
+                return eligible
+            end
+        end
+    end
+
+    if (not checkContainsPoint or widget:containsPoint(mousePosition)) and
+        ((not widget:isPhantom() and not widget:isOnHtml()) or
+            widget:isDraggable()) then
+        return widget
+    end
+    return nil
+end
+
+local function isEffectivelyInputEligible(widget)
+    local candidate = widget
+    local current = widget
+    -- UI propagation starts at the root regardless of its own flags, then
+    -- requires every child on the selected branch to be explicitly active.
+    while current and current:getParent() do
+        if not current:isExplicitlyEnabled() or
+            not current:isExplicitlyVisible() then
+            return false
+        end
+        current = current:getParent()
+    end
+    return (not candidate:isPhantom() and not candidate:isOnHtml()) or
+        candidate:isDraggable()
 end
 
 local function mobileV2InputBlocksMap(gameMap, mousePosition)
@@ -113,7 +157,14 @@ local function mobileV2InputBlocksMap(gameMap, mousePosition)
         return true
     end
 
-    local top = g_ui.getRootWidget():recursiveGetChildByPos(mousePosition, false)
+    -- Match UIWidget::propagateOnMouseEvent: disabled/invisible subtrees do not
+    -- participate, children are visited in reverse (topmost) order, and
+    -- phantom/HTML-only widgets do not stop propagation unless draggable.
+    local root = g_ui.getRootWidget()
+    local top = root:recursiveGetChildByPos(mousePosition, false)
+    if not top or not isEffectivelyInputEligible(top) then
+        top = topEligibleWidgetAt(root, mousePosition, false)
+    end
     while top do
         if top == gameMap then
             return false
@@ -132,7 +183,7 @@ function UIGameMap:onMouseRelease(mousePosition, mouseButton)
     -- pointer. A gameplay control, drawer, chat, reconnecting screen, or modal
     -- owns that release ahead of the map even when its own handler declines it.
     if mobileV2InputBlocksMap(self, mousePosition) then
-        self.allowNextRelease = false
+        self:cancelPendingRelease()
         return true
     end
 

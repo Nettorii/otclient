@@ -68,6 +68,7 @@ public:
     void handleMouseMotionCallback(const EmscriptenMouseEvent* event);
     void handleKeyboardCallback(int eventType, const EmscriptenKeyboardEvent* event);
     void handleFocusCallback(int eventType, const EmscriptenFocusEvent* event);
+    void handleVisibilityChangeCallback(const EmscriptenVisibilityChangeEvent* event);
     void handleTouchCallback(int eventType, const EmscriptenTouchEvent* event);
     void updateTouchPosition(const Point& pos);
     void processLongTouch();

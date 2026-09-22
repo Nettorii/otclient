@@ -49,6 +49,7 @@ class PlatformWindow
 
     using OnResizeCallback = std::function<void(const Size&)>;
     using OnInputEventCallback = std::function<void(const InputEvent&)>;
+    using OnFocusChangeCallback = std::function<void(bool)>;
     using OnViewportMetricsChangeCallback = std::function<void()>;
 
 public:
@@ -139,6 +140,7 @@ public:
     void setOnClose(const std::function<void()>& onClose) { m_onClose = onClose; }
     void setOnResize(const OnResizeCallback& onResize) { m_onResize = onResize; }
     void setOnInputEvent(const OnInputEventCallback& onInputEvent) { m_onInputEvent = onInputEvent; }
+    void setOnFocusChange(const OnFocusChangeCallback& onFocusChange) { m_onFocusChange = onFocusChange; }
     void setOnViewportMetricsChange(const OnViewportMetricsChangeCallback& onViewportMetricsChange) { m_onViewportMetricsChange = onViewportMetricsChange; }
     void setViewportMetrics(const ViewportMetrics& viewportMetrics);
 
@@ -152,6 +154,7 @@ protected:
 
     virtual void onDisplayDensityChanged(float /*newDensity*/) {}
 
+    void setFocused(bool focused);
     void updateUnmaximizedCoords();
 
     void processKeyDown(Fw::Key keyCode);
@@ -184,6 +187,7 @@ protected:
     std::function<void()> m_onClose;
     OnResizeCallback m_onResize;
     OnInputEventCallback m_onInputEvent;
+    OnFocusChangeCallback m_onFocusChange;
     OnViewportMetricsChangeCallback m_onViewportMetricsChange;
 
     std::vector<std::function<void(const InputEvent&)>> m_keyListeners;

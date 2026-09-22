@@ -45,6 +45,13 @@ X11Window window;
 
 PlatformWindow& g_window = window;
 
+void PlatformWindow::setFocused(const bool focused)
+{
+    m_focused = focused;
+    if (m_onFocusChange)
+        m_onFocusChange(focused);
+}
+
 void PlatformWindow::setViewportMetrics(const ViewportMetrics& viewportMetrics)
 {
     auto normalizedMetrics = viewportMetrics;

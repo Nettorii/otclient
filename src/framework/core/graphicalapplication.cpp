@@ -75,6 +75,10 @@ void GraphicalApplication::init(std::vector<std::string>& args, ApplicationConte
 
     g_window.setOnClose([this] { g_dispatcher.addEvent([this] { close(); }); });
 
+    g_window.setOnFocusChange([](const bool focused) {
+        g_lua.callGlobalField("g_window", "onFocusChange", focused);
+    });
+
     g_window.setOnViewportMetricsChange([] {
         g_lua.callGlobalField("g_window", "onViewportMetricsChange");
     });

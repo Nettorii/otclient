@@ -161,6 +161,7 @@ void BrowserWindow::terminate() {
     emscripten_set_resize_callback(EMSCRIPTEN_EVENT_TARGET_WINDOW, this, EM_TRUE, nullptr);
     emscripten_set_focus_callback(EMSCRIPTEN_EVENT_TARGET_WINDOW, this, EM_TRUE, nullptr);
     emscripten_set_blur_callback(EMSCRIPTEN_EVENT_TARGET_WINDOW, this, EM_TRUE, nullptr);
+    emscripten_set_visibilitychange_callback(this, EM_TRUE, nullptr);
     emscripten_set_touchend_callback("#canvas", this, EM_TRUE, nullptr);
     emscripten_set_touchstart_callback("#canvas", this, EM_TRUE, nullptr);
     emscripten_set_touchmove_callback("#canvas", this, EM_TRUE, nullptr);
@@ -235,6 +236,10 @@ void BrowserWindow::poll() {
         }));
         emscripten_set_blur_callback(EMSCRIPTEN_EVENT_TARGET_WINDOW, this, EM_TRUE, ([](int eventType, const EmscriptenFocusEvent* event, void* userData) -> EM_BOOL {
             static_cast<BrowserWindow*>(userData)->handleFocusCallback(eventType, event);
+            return EM_TRUE;
+        }));
+        emscripten_set_visibilitychange_callback(this, EM_TRUE, ([](int, const EmscriptenVisibilityChangeEvent* event, void* userData) -> EM_BOOL {
+            static_cast<BrowserWindow*>(userData)->handleVisibilityChangeCallback(event);
             return EM_TRUE;
         }));
         emscripten_set_touchend_callback("#canvas", this, EM_TRUE, ([](int eventType, const EmscriptenTouchEvent* event, void* userData) -> EM_BOOL {
@@ -501,13 +506,25 @@ void BrowserWindow::handleKeyboardCallback(int eventType, const EmscriptenKeyboa
     }
 }
 
-void BrowserWindow::handleFocusCallback(int eventType, const EmscriptenFocusEvent* event) {
-    releaseAllKeys();
-    if (eventType == EMSCRIPTEN_EVENT_FOCUS) {
-        m_focused = true;
-    } else if (eventType == EMSCRIPTEN_EVENT_BLUR) {
-        m_focused = false;
-    }
+void BrowserWindow::handleFocusCallback(int eventType, const EmscriptenFocusEvent*) {
+    if (eventType != EMSCRIPTEN_EVENT_FOCUS &&
+        eventType != EMSCRIPTEN_EVENT_BLUR)
+        return;
+
+    const bool focused = eventType == EMSCRIPTEN_EVENT_FOCUS;
+    g_dispatcher.addEvent([this, focused] {
+        releaseAllKeys();
+        setFocused(focused);
+    });
+}
+
+void BrowserWindow::handleVisibilityChangeCallback(const EmscriptenVisibilityChangeEvent* event) {
+    if (!event->hidden)
+        return;
+    g_dispatcher.addEvent([this] {
+        releaseAllKeys();
+        setFocused(false);
+    });
 }
 
 void BrowserWindow::swapBuffers() {

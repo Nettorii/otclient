@@ -10,6 +10,7 @@ local actionAdapter
 local hotbarAdapter
 local unsubscribeProfile
 local layoutEvent
+local windowCallbacks
 local gameActive = false
 local controlsFit = false
 local foregroundOwner = {}
@@ -211,6 +212,12 @@ local function synchronizeInputTargets()
 end
 
 local function cancelOwnedGestures()
+  local gameInterface = modules.game_interface
+  local gameMap = gameInterface and gameInterface.getMapPanel and
+    gameInterface.getMapPanel()
+  if gameMap and gameMap.cancelPendingRelease then
+    gameMap:cancelPendingRelease()
+  end
   local joystick = modules.game_joystick
   if joystick and joystick.cancelGesture then
     joystick.cancelGesture()
@@ -377,6 +384,7 @@ local function releaseGameplayForeground()
 end
 
 function foregroundOwner:onForegroundGained()
+  cancelOwnedGestures()
   if not gameActive then
     synchronizeJoystick()
     synchronizeActions()
@@ -401,6 +409,7 @@ function foregroundOwner:onForegroundLost()
 end
 
 local function onGameStart()
+  cancelOwnedGestures()
   if gameActive then
     setControlsVisible(true)
     return
@@ -640,6 +649,16 @@ function init()
     onGameStart = onGameStart,
     onGameEnd = onGameEnd
   })
+  if g_window then
+    windowCallbacks = {
+      onFocusChange = function(focused)
+        if focused == false then
+          cancelOwnedGestures()
+        end
+      end
+    }
+    connect(g_window, windowCallbacks)
+  end
 
   if g_game.isOnline() then
     onGameStart()
@@ -655,6 +674,10 @@ function terminate()
     onGameStart = onGameStart,
     onGameEnd = onGameEnd
   })
+  if windowCallbacks then
+    disconnect(g_window, windowCallbacks)
+    windowCallbacks = nil
+  end
   if unsubscribeProfile then
     unsubscribeProfile()
     unsubscribeProfile = nil
