@@ -313,50 +313,88 @@ function Host:_finishGesture(button)
 end
 
 function Host:_bindGestureWidget(widget, scrollBar)
-  if not widget or widget:isDestroyed() then
+  if self.terminated or not widget or widget:isDestroyed() then
     return false
   end
-  if self.gestureBindings[widget] then
-    return true
+  local existing = self.gestureBindings[widget]
+  if existing then
+    return existing.unbind
   end
-  self.gestureBindings[widget] = true
 
-  local callbacks = {
-    onMousePress = function(_, position, button)
+  local binding = {
+    active = true,
+    host = self,
+    widget = widget,
+    previous = {},
+    wrappers = {}
+  }
+  local interceptors = {
+    onMousePress = function(host, _, position, button)
       if button == MouseRightButton then
-        self.gesture.suppressClick = true
+        host.gesture.suppressClick = true
         return true
       end
       if button ~= MouseLeftButton then
         return true
       end
-      self:_beginGesture(position)
+      host:_beginGesture(position)
       return false
     end,
-    onMouseMove = function(_, position)
-      return self:_moveGesture(position, scrollBar)
+    onMouseMove = function(host, _, position)
+      return host:_moveGesture(position, scrollBar)
     end,
-    onMouseRelease = function(_, _, button)
-      return self:_finishGesture(button)
+    onMouseRelease = function(host, _, _, button)
+      return host:_finishGesture(button)
     end
   }
 
-  if self.connectWidget then
-    self.connectWidget(widget, callbacks)
-  else
-    for event, callback in pairs(callbacks) do
-      local previous = widget[event]
-      local gestureCallback = callback
-      local featureCallback = previous
-      widget[event] = function(...)
-        if gestureCallback(...) then
+  for event, interceptor in pairs(interceptors) do
+    local previous = widget[event]
+    local gestureInterceptor = interceptor
+    binding.previous[event] = previous
+    binding.wrappers[event] = function(...)
+      local host = binding.host
+      if host and binding.active then
+        if gestureInterceptor(host, ...) then
           return true
         end
-        return featureCallback and featureCallback(...) or false
+      end
+      return previous and previous(...) or false
+    end
+    widget[event] = binding.wrappers[event]
+  end
+
+  binding.unbind = function()
+    if not binding.active then
+      return
+    end
+    binding.active = false
+    local host = binding.host
+    local boundWidget = binding.widget
+    if host and boundWidget and
+        host.gestureBindings[boundWidget] == binding then
+      host.gestureBindings[boundWidget] = nil
+    end
+    if boundWidget and not boundWidget:isDestroyed() then
+      for event, wrapper in pairs(binding.wrappers) do
+        if boundWidget[event] == wrapper then
+          boundWidget[event] = binding.previous[event]
+        end
       end
     end
+    binding.host = nil
+    binding.widget = nil
   end
-  return true
+
+  self.gestureBindings[widget] = binding
+  return binding.unbind
+end
+
+function Host:_unbindGestureWidget(widget)
+  local binding = widget and self.gestureBindings[widget]
+  if binding then
+    binding.unbind()
+  end
 end
 
 function Host:_bindGestureTree(widget)
@@ -373,16 +411,65 @@ function Host:_bindGestureTree(widget)
   end
 end
 
+function Host:_unbindGestureTree(widget)
+  if not widget then
+    return
+  end
+  if widget.getChildren then
+    for _, child in ipairs(widget:getChildren()) do
+      self:_unbindGestureTree(child)
+    end
+  end
+  self:_unbindGestureWidget(widget)
+end
+
+function Host:_unbindAllGestureWidgets()
+  local bindings = {}
+  for _, binding in pairs(self.gestureBindings) do
+    bindings[#bindings + 1] = binding
+  end
+  for _, binding in ipairs(bindings) do
+    binding.unbind()
+  end
+  self.gesture = {}
+end
+
 function Host:bindGestureWidget(widget)
-  if not widget or widget:isDestroyed() then
+  if self.terminated or not widget or widget:isDestroyed() then
     return false
   end
-  self:_bindGestureTree(widget)
-  return true
+  local unbinds = {}
+  local function bindTree(current)
+    if not current or current:isDestroyed() then
+      return
+    end
+    unbinds[#unbinds + 1] = self:_bindGestureWidget(current)
+    if current.getChildren then
+      for _, child in ipairs(current:getChildren()) do
+        bindTree(child)
+      end
+    end
+  end
+  bindTree(widget)
+
+  local released = false
+  return function()
+    if released then
+      return
+    end
+    released = true
+    for index = #unbinds, 1, -1 do
+      unbinds[index]()
+    end
+  end
 end
 
 function Host:_clearNavigation()
+  self.navigationGeneration = self.navigationGeneration + 1
   for _, button in ipairs(self.navigationButtons) do
+    self.navigationOwners[button] = nil
+    self:_unbindGestureWidget(button)
+    button.onClick = nil
     if not button:isDestroyed() then
       button:destroy()
     end
@@ -396,9 +483,15 @@ function Host:_renderNavigation()
   end
 
   self:_clearNavigation()
+  local generation = self.navigationGeneration
   for _, id in ipairs(self:_orderedIds()) do
     local entry = self.registry[id]
     local button = self.createWidget('MobileDrawerNavigationButton', self.navigation)
+    local owner = {
+      entry = entry,
+      generation = generation
+    }
+    self.navigationOwners[button] = owner
     button.drawerViewId = id
     button:setText(entry.descriptor.title)
     if entry.descriptor.icon ~= '' and button.setImageSource then
@@ -407,15 +500,20 @@ function Host:_renderNavigation()
     button:setEnabled(true)
     self:_bindGestureWidget(button, self.navigationScrollBar)
     button.onClick = function()
+      local currentOwner = self.navigationOwners[button]
+      if self.terminated or button:isDestroyed() or
+          self.navigationGeneration ~= generation or
+          currentOwner ~= owner or currentOwner.entry ~= entry or
+          self.registry[id] ~= entry then
+        return false
+      end
       if self.gesture.suppressClick then
         return true
       end
       if self.active and self.active.entry == entry then
-        self:close()
-      else
-        self:open(id)
+        return self:close()
       end
-      return true
+      return self:open(id)
     end
     self.navigationButtons[#self.navigationButtons + 1] = button
   end
@@ -449,6 +547,24 @@ function Host:_positionInsideSurface(position)
     position.y < geometry.y + geometry.height
 end
 
+function Host:_unbindBackdropHandlers(backdrop)
+  local binding = self.backdropBinding
+  if not binding then
+    return
+  end
+  self.backdropBinding = nil
+  local widget = backdrop or binding.widget
+  if widget and not widget:isDestroyed() then
+    for event, handler in pairs(binding.handlers) do
+      if widget[event] == handler then
+        widget[event] = binding.previous[event]
+      end
+    end
+  end
+  binding.host = nil
+  binding.widget = nil
+end
+
 function Host:_destroyBackdrop()
   if self.unsubscribeProfile then
     self.unsubscribeProfile()
@@ -456,13 +572,15 @@ function Host:_destroyBackdrop()
   end
 
   local backdrop = self.backdrop
+  self:_unbindAllGestureWidgets()
+  self:_clearNavigation()
+  self:_unbindBackdropHandlers(backdrop)
   self.backdrop = nil
   self.surface = nil
   self.title = nil
   self.content = nil
   self.navigation = nil
   self.navigationScrollBar = nil
-  self.navigationButtons = {}
   self.geometry = nil
   self.backdropPressOutside = false
 
@@ -505,51 +623,84 @@ function Host:_ensureBackdrop(profile)
   backdrop:setEnabled(true)
   backdrop:hide()
 
-  backdrop.onMousePress = function(_, position, button)
-    self.cancelGestures()
+  local binding = {
+    host = self,
+    widget = backdrop,
+    previous = {
+      onMousePress = backdrop.onMousePress,
+      onMouseMove = backdrop.onMouseMove,
+      onMouseRelease = backdrop.onMouseRelease,
+      onDestroy = backdrop.onDestroy
+    },
+    handlers = {}
+  }
+  binding.handlers.onMousePress = function(_, position, button)
+    local host = binding.host
+    if not host then
+      return false
+    end
+    host.cancelGestures()
     if button == MouseLeftButton then
-      self.backdropPressOutside = not self:_positionInsideSurface(position)
-      if self.backdropPressOutside then
-        self:_beginGesture(position)
+      host.backdropPressOutside = not host:_positionInsideSurface(position)
+      if host.backdropPressOutside then
+        host:_beginGesture(position)
       end
     else
-      self.backdropPressOutside = false
-      self.gesture.suppressClick = true
+      host.backdropPressOutside = false
+      host.gesture.suppressClick = true
     end
     return true
   end
-  backdrop.onMouseMove = function(_, position)
-    if self.backdropPressOutside then
-      self:_moveGesture(position)
+  binding.handlers.onMouseMove = function(_, position)
+    local host = binding.host
+    if not host then
+      return false
+    end
+    if host.backdropPressOutside then
+      host:_moveGesture(position)
     end
     return true
   end
-  backdrop.onMouseRelease = function(_, position, button)
+  binding.handlers.onMouseRelease = function(_, position, button)
+    local host = binding.host
+    if not host then
+      return false
+    end
     if button == MouseLeftButton then
-      local pressedOutside = self.backdropPressOutside
-      local releasedOutside = not self:_positionInsideSurface(position)
-      self.backdropPressOutside = false
+      local pressedOutside = host.backdropPressOutside
+      local releasedOutside = not host:_positionInsideSurface(position)
+      host.backdropPressOutside = false
       if pressedOutside then
-        self:_moveGesture(position)
+        host:_moveGesture(position)
       end
-      local tap = pressedOutside and not self.gesture.dragged
+      local tap = pressedOutside and not host.gesture.dragged
       if pressedOutside then
-        self:_finishGesture(button)
+        host:_finishGesture(button)
       end
       if tap and releasedOutside then
-        self:close()
+        host:close()
       end
     else
-      self.backdropPressOutside = false
-      self:_finishGesture(button)
+      host.backdropPressOutside = false
+      host:_finishGesture(button)
     end
     return true
   end
-  backdrop.onDestroy = function()
-    if not self.destroyingBackdrop then
-      self.backdrop = nil
-      self:close()
+  binding.handlers.onDestroy = function(widget)
+    local host = binding.host
+    local previousDestroy = binding.previous.onDestroy
+    if host and not host.destroyingBackdrop then
+      host.backdrop = nil
+      host:_unbindBackdropHandlers(widget)
+      host:close()
     end
+    if previousDestroy then
+      previousDestroy(widget)
+    end
+  end
+  self.backdropBinding = binding
+  for event, handler in pairs(binding.handlers) do
+    backdrop[event] = handler
   end
 
   self:_bindGestureWidget(surface)
@@ -596,6 +747,7 @@ function Host:_finalizeRecord(record)
   end
 
   record.finalizing = true
+  self:_unbindGestureTree(record.holder)
   if record.holder and not record.holder:isDestroyed() then
     record.holder:setEnabled(false)
     record.holder:hide()
@@ -608,6 +760,7 @@ function Host:_finalizeRecord(record)
     record.destroyCalled = true
     self:_callRecord(record, record.entry.descriptor.destroy)
   end
+  self:_unbindGestureTree(record.holder)
   record.finalized = true
   record.finalizing = false
   if record.holder and not record.holder:isDestroyed() then
@@ -620,6 +773,7 @@ function Host:_requestCleanup(record)
     return
   end
   record.cleanupRequested = true
+  self:_unbindGestureTree(record.holder)
   if record.holder and not record.holder:isDestroyed() then
     record.holder:setEnabled(false)
     record.holder:hide()
@@ -748,8 +902,7 @@ function Host:open(id)
     return false
   end
   if self.active and self.active.entry == entry then
-    self:close()
-    return true
+    return self:close()
   end
 
   self.cancelGestures()
@@ -872,6 +1025,13 @@ function Host:terminate()
   self.terminated = true
   self.transition = self.transition + 1
   self.cancelGestures()
+  self:_unbindAllGestureWidgets()
+  self:_unbindBackdropHandlers(self.backdrop)
+  self:_clearNavigation()
+  if self.unsubscribeProfile then
+    self.unsubscribeProfile()
+    self.unsubscribeProfile = nil
+  end
   self:_detachPending()
   self:_detachActive()
   self:_requestShellClose(self.transition)
@@ -899,8 +1059,6 @@ function MobileDrawer.create(options)
     subscribeProfile = options.subscribeProfile or mobileUi.subscribeProfile,
     createBackdrop = createBackdrop,
     createWidget = createWidget,
-    connectWidget = options.connectWidget or
-      (connect and function(widget, callbacks) connect(widget, callbacks) end),
     cancelGestures = options.cancelGestures or function() end,
     registerActionHandler = options.registerActionHandler,
     onAvailabilityChange = options.onAvailabilityChange,
@@ -908,6 +1066,8 @@ function MobileDrawer.create(options)
     registry = {},
     viewCount = 0,
     navigationButtons = {},
+    navigationOwners = setmetatable({}, { __mode = 'k' }),
+    navigationGeneration = 0,
     gesture = {},
     gestureBindings = setmetatable({}, { __mode = 'k' }),
     callbackDepth = 0,
