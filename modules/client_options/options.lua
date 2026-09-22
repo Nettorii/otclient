@@ -4,11 +4,13 @@ local MOBILE_OPTION_KEYS = {
     'mobileHandedness',
     'mobileOverlayOpacity'
 }
-local mobileOptionKeySet = {
-    mobileControlPreset = true,
-    mobileHandedness = true,
-    mobileOverlayOpacity = true
-}
+local mobileOptionKeySet = {}
+for _, key in ipairs(MOBILE_OPTION_KEYS) do
+    mobileOptionKeySet[key] = true
+end
+local function isMobileOptionKey(key)
+    return mobileOptionKeySet[key] == true
+end
 local initializing = false
 local ready = false
 
@@ -279,13 +281,13 @@ local function setup()
     for k, obj in pairs(options) do
         local v = obj.value
 
-        if not mobileOptionKeySet[k] and type(v) == 'boolean' then
+        if not isMobileOptionKey(k) and type(v) == 'boolean' then
             local value = g_settings.getBoolean(k)
             setOption(k, value, true, true)
-        elseif not mobileOptionKeySet[k] and type(v) == 'number' then
+        elseif not isMobileOptionKey(k) and type(v) == 'number' then
             local value = g_settings.getNumber(k)
             setOption(k, value, true, true)
-        elseif not mobileOptionKeySet[k] and type(v) == 'string' then
+        elseif not isMobileOptionKey(k) and type(v) == 'string' then
             local value = g_settings.getString(k)
             setOption(k, value, true, true)
         end
@@ -362,12 +364,15 @@ controller:setUI('options')
 function controller:onInit()
     initializing = true
     ready = false
+    local mobileV2 = isMobileV2()
     for k, obj in pairs(options) do
         if type(obj) ~= "table" then
             obj = { value = obj }
             options[k] = obj
         end
-        g_settings.setDefault(k, obj.value)
+        if mobileV2 or not isMobileOptionKey(k) then
+            g_settings.setDefault(k, obj.value)
+        end
     end
     validatePersistedMobileSettings()
 
@@ -517,6 +522,9 @@ function setOption(key, value, force, fromSettings, storeBeforeCallbacks)
     if option == nil then
         g_logger.warning(string.format("[client_options] Attempted to set unknown option: '%s'", key))
         return
+    end
+    if isMobileOptionKey(key) and not isMobileV2() then
+        return false
     end
 
     local corrected = false

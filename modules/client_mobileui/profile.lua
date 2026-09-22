@@ -466,6 +466,9 @@ local function getWindowMetric(name)
 end
 
 local function readMobileOption(key, defaultValue, settingGetter)
+  if not mobileV2Runtime() then
+    return defaultValue
+  end
   local clientOptions = modules and modules.client_options
   local optionsReady = clientOptions and
     type(clientOptions.isReady) == 'function' and clientOptions.isReady()
