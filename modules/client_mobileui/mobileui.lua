@@ -57,6 +57,7 @@ function init()
   g_ui.importStyle('portrait.otui')
   initProfile()
   if isV2Enabled() then
+    initFallback()
     initModalHost()
     initPortrait()
   end
@@ -65,5 +66,6 @@ end
 function terminate()
   terminatePortrait()
   terminateModalHost()
+  terminateFallback()
   terminateProfile()
 end

@@ -435,6 +435,8 @@ void Application::registerLuaFunctions()
     g_lua.bindSingletonFunction("g_window", "getSafeAreaInsetRight", &PlatformWindow::getSafeAreaInsetRight, &g_window);
     g_lua.bindSingletonFunction("g_window", "getSafeAreaInsetBottom", &PlatformWindow::getSafeAreaInsetBottom, &g_window);
     g_lua.bindSingletonFunction("g_window", "getKeyboardHeight", &PlatformWindow::getKeyboardHeight, &g_window);
+    g_lua.bindSingletonFunction("g_window", "getViewportWidth", &PlatformWindow::getViewportWidth, &g_window);
+    g_lua.bindSingletonFunction("g_window", "getViewportHeight", &PlatformWindow::getViewportHeight, &g_window);
     g_lua.bindSingletonFunction("g_window", "isKeyPressed", &PlatformWindow::isKeyPressed, &g_window);
     g_lua.bindSingletonFunction("g_window", "isMouseButtonPressed", &PlatformWindow::isMouseButtonPressed, &g_window);
     g_lua.bindSingletonFunction("g_window", "isVisible", &PlatformWindow::isVisible, &g_window);

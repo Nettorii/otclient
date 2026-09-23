@@ -515,6 +515,13 @@ end
 
 local function onGameStart()
   cancelOwnedGestures()
+  local enterGame = modules.client_entergame
+  local characterList = enterGame and enterGame.CharacterList
+  if characterList and characterList.isIntentionalExitPending and
+      characterList.isIntentionalExitPending() then
+    setControlsVisible(false)
+    return
+  end
   if reconnectAdapter then
     reconnectAdapter:onGameStart()
   end
@@ -666,45 +673,26 @@ end
 
 local function showViewCreationFallback(viewId, errorMessage, profile)
   local mobileUi = modules.client_mobileui
-  g_logger.error('[game_mobileui] view creation failed module=game_mobileui view=' ..
-    tostring(viewId) .. ' profile=' .. profileDescription(profile) .. ': ' ..
-    tostring(errorMessage))
-
-  if fallbackModal and fallbackModal:isOpen() then
-    fallbackModal:close()
-  end
-
-  local body = g_ui.createWidget('Panel')
-  body:setHeight(96)
-  local label = g_ui.createWidget('Label', body)
-  label:setText(tr('This view could not be opened. Please try again.'))
-  label:setColor('#dbe6ee')
-  label:setTextAlign(AlignCenter)
-  label:setTextWrap(true)
-  label:setRect({ x = 8, y = 8, width = 520, height = 80 })
-  label:setPhantom(true)
-
-  local handle
-  handle = mobileUi.showModal({
+  return mobileUi.showMobileViewError({
+    module = 'game_mobileui',
+    view = viewId,
+    profile = profile,
+    state = 'modal',
     title = tr('Unable to open'),
-    body = body,
-    buttons = {
+    message = tr(
+      'This view could not be opened. Reload the client to continue safely.'),
+    actions = {
       {
-        text = tr('Close'),
+        text = tr('Reload'),
         callback = function()
-          if handle then
-            handle:close()
+          if g_app.restart then
+            g_app.restart()
           end
+          return true
         end
       }
-    },
-    onClose = function()
-      if fallbackModal == handle then
-        fallbackModal = nil
-      end
-    end
-  })
-  fallbackModal = handle:isOpen() and handle or nil
+    }
+  }, errorMessage)
 end
 
 local function registerPlaceholderDrawerViews()
@@ -929,18 +917,64 @@ end
 
 initializeGameplay = function(initialProfile, atomicProfile)
   local mobileUi = modules.client_mobileui
+  local profile = initialProfile or mobileUi.getProfile()
   if initialized or terminating or
-      mobileUi.isPortraitProfile(initialProfile or mobileUi.getProfile()) then
+      mobileUi.isPortraitProfile(profile) then
     return false
   end
 
-  hud = g_ui.displayUI('game_mobileui')
-  status = hud:getChildById('status')
-  menu = hud:getChildById('menu')
-  joystickHost = hud:getChildById('joystickHost')
-  hotbar = hud:getChildById('hotbar')
-  actions = hud:getChildById('actions')
-  drawerHandle = hud:getChildById('drawerHandle')
+  local partialHud
+  local shell = mobileUi.safeCreateMobileView({
+    module = 'game_mobileui',
+    view = 'hud',
+    profile = profile,
+    state = 'modal',
+    title = tr('Unable to start mobile controls'),
+    message = tr(
+      'The gameplay controls could not be loaded. Reload the client to continue safely.'),
+    actions = {
+      {
+        text = tr('Reload'),
+        callback = function()
+          if g_app.restart then
+            g_app.restart()
+          end
+          return true
+        end
+      }
+    },
+    create = function()
+      partialHud = g_ui.displayUI('game_mobileui')
+      local created = {
+        hud = partialHud,
+        status = partialHud:getChildById('status'),
+        menu = partialHud:getChildById('menu'),
+        joystickHost = partialHud:getChildById('joystickHost'),
+        hotbar = partialHud:getChildById('hotbar'),
+        actions = partialHud:getChildById('actions'),
+        drawerHandle = partialHud:getChildById('drawerHandle')
+      }
+      assert(created.status and created.menu and created.joystickHost and
+        created.hotbar and created.actions and created.drawerHandle,
+        'mobile HUD is incomplete')
+      return created
+    end,
+    cleanup = function()
+      if partialHud and not partialHud:isDestroyed() then
+        partialHud:destroy()
+      end
+    end
+  })
+  if not shell then
+    return false
+  end
+  hud = shell.hud
+  status = shell.status
+  menu = shell.menu
+  joystickHost = shell.joystickHost
+  hotbar = shell.hotbar
+  actions = shell.actions
+  drawerHandle = shell.drawerHandle
   configureInputTarget(menu)
 
   if MobileStatus then
@@ -978,6 +1012,10 @@ initializeGameplay = function(initialProfile, atomicProfile)
         if map then
           map:focus()
         end
+      end,
+      onError = function(errorMessage)
+        showViewCreationFallback(
+          'chat', errorMessage, mobileUi.getProfile())
       end
     })
     unregisterChatHandler = actionAdapter:registerChatHandler(function()
@@ -991,7 +1029,8 @@ initializeGameplay = function(initialProfile, atomicProfile)
       return actionAdapter:registerDrawerHandler(handler)
     end,
     onAvailabilityChange = synchronizeInputTargets,
-    onViewCreateError = showViewCreationFallback
+    onViewCreateError = showViewCreationFallback,
+    onShellCreateError = showViewCreationFallback
   })
   configureDrawerHandle(drawerHandle)
   registerPlaceholderDrawerViews()
@@ -1066,10 +1105,17 @@ local function onPortraitGate(blocked, profile)
   end
   if not initialized then
     initializeGameplay(profile, true)
+  end
+
+  applyProfile(profile, true)
+  local foregroundState = modules.client_mobileui.getForeground()
+  if foregroundState ~= 'gameplay' then
+    controlsSuppressed = true
+    setControlsVisible(false)
     return
   end
+
   controlsSuppressed = false
-  applyProfile(profile, true)
   if gameActive then
     acquireGameplayForeground()
     setControlsVisible(true)
@@ -1097,13 +1143,17 @@ function init()
 
   reconnectAdapter = MobileReconnecting.create({
     cancelGestures = cancelOwnedGestures,
-    onRetry = function()
-      return CharacterList and CharacterList.retryCurrentCharacter and
-        CharacterList.retryCurrentCharacter() or false
+    onRetry = function(generation)
+      local enterGame = modules.client_entergame
+      local characterList = enterGame and enterGame.CharacterList
+      return characterList and characterList.retryCurrentCharacter and
+        characterList.retryCurrentCharacter(generation) or false
     end,
-    onLogout = function()
-      return CharacterList and CharacterList.cancelReconnect and
-        CharacterList.cancelReconnect() or false
+    onLogout = function(generation)
+      local enterGame = modules.client_entergame
+      local characterList = enterGame and enterGame.CharacterList
+      return characterList and characterList.cancelReconnect and
+        characterList.cancelReconnect(generation) or false
     end
   })
   unsubscribePortrait = mobileUi.subscribePortraitGate(onPortraitGate)

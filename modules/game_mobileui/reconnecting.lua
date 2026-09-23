@@ -79,8 +79,32 @@ function Adapter:_setButtonsEnabled()
   end
 end
 
+function Adapter:_nextGeneration()
+  self.generation = self.generation + 1
+  return self.generation
+end
+
+function Adapter:_bindActions(generation)
+  if self.retry and not self.retry:isDestroyed() then
+    self.retry.onClick = function()
+      return self:retryNow(generation)
+    end
+  end
+  if self.logout and not self.logout:isDestroyed() then
+    self.logout.onClick = function()
+      return self:logOut(generation)
+    end
+  end
+end
+
 function Adapter:_applyProfile(profile)
-  if not self.active or not self.surface or self.surface:isDestroyed() then
+  if not self.active then
+    return false
+  end
+  if self.fallbackUi then
+    return self.backdrop and not self.backdrop:isDestroyed()
+  end
+  if not self.surface or self.surface:isDestroyed() then
     return false
   end
   local geometry = MobileReconnecting.computeGeometry(profile)
@@ -105,6 +129,7 @@ function Adapter:_destroyUi()
   self.reasonLabel = nil
   self.retry = nil
   self.logout = nil
+  self.fallbackUi = false
   if backdrop and not backdrop:isDestroyed() then
     self.destroying = true
     if backdrop.ungrabKeyboard then
@@ -119,39 +144,101 @@ function Adapter:_createUi()
   if self.backdrop and not self.backdrop:isDestroyed() then
     return true
   end
-  local ok, backdrop = pcall(
-    self.createWidget, 'MobileReconnectBackdrop', self.getRoot())
-  if not ok or not backdrop or backdrop:isDestroyed() then
-    self.logError(backdrop)
-    return false
+
+  local partialBackdrop
+  local safeCreate = self.mobileUi.safeCreateMobileView
+  if type(safeCreate) ~= 'function' then
+    safeCreate = function(config)
+      local ok, result = pcall(config.create)
+      if ok then
+        return result
+      end
+      if config.cleanup then
+        pcall(config.cleanup)
+      end
+      self.logError(result)
+      return nil
+    end
+  end
+  local shell, fallback = safeCreate({
+    module = 'game_mobileui',
+    view = 'reconnecting',
+    profile = self.mobileUi.getProfile(),
+    state = 'reconnecting',
+    owner = self.foregroundOwner,
+    title = tr('Reconnecting'),
+    message = tr('Connection lost.'),
+    actions = {
+      { text = tr('Retry'), callback = function()
+        return self:retryNow(self.generation)
+      end },
+      { text = tr('Log out'), callback = function()
+        return self:logOut(self.generation)
+      end }
+    },
+    create = function()
+      partialBackdrop = self.createWidget(
+        'MobileReconnectBackdrop', self.getRoot())
+      local result = {
+        backdrop = partialBackdrop,
+        surface =
+          partialBackdrop:recursiveGetChildById('reconnectSurface'),
+        reasonLabel =
+          partialBackdrop:recursiveGetChildById('reconnectReason'),
+        retry =
+          partialBackdrop:recursiveGetChildById('reconnectRetry'),
+        logout =
+          partialBackdrop:recursiveGetChildById('reconnectLogout')
+      }
+      assert(result.surface and result.reasonLabel and result.retry and
+        result.logout, 'reconnect UI is incomplete')
+      return result
+    end,
+    cleanup = function()
+      if partialBackdrop and not partialBackdrop:isDestroyed() then
+        partialBackdrop:destroy()
+      end
+    end
+  })
+  if not shell then
+    if not fallback then
+      return false
+    end
+    shell = {
+      backdrop = fallback.widget,
+      surface = fallback.surface,
+      reasonLabel = fallback.label,
+      retry = fallback.buttons[1],
+      logout = fallback.buttons[2]
+    }
+    self.fallbackUi = true
   end
 
-  self.backdrop = backdrop
-  self.surface = backdrop:recursiveGetChildById('reconnectSurface')
-  self.reasonLabel = backdrop:recursiveGetChildById('reconnectReason')
-  self.retry = backdrop:recursiveGetChildById('reconnectRetry')
-  self.logout = backdrop:recursiveGetChildById('reconnectLogout')
-  if not self.surface or not self.reasonLabel or not self.retry or
-      not self.logout then
+  self.backdrop = shell.backdrop
+  self.surface = shell.surface
+  self.reasonLabel = shell.reasonLabel
+  self.retry = shell.retry
+  self.logout = shell.logout
+  if not self.backdrop or
+      (not self.fallbackUi and (not self.surface or not self.reasonLabel or
+        not self.retry or not self.logout)) then
     self:_destroyUi()
-    self.logError('reconnect UI is incomplete')
     return false
   end
 
+  local backdrop = self.backdrop
+  local fallbackOnDestroy = self.backdrop.onDestroy
   backdrop.onMousePress = function() return true end
   backdrop.onMouseMove = function() return true end
   backdrop.onMouseRelease = function() return true end
   backdrop.onKeyDown = function() return true end
-  backdrop.onDestroy = function()
+  backdrop.onDestroy = function(...)
+    if fallbackOnDestroy then
+      fallbackOnDestroy(...)
+    end
     if not self.destroying and self.active then
       self:_abandon()
     end
-  end
-  self.retry.onClick = function()
-    return self:retryNow()
-  end
-  self.logout.onClick = function()
-    return self:logOut()
   end
   self.unsubscribeProfile = self.mobileUi.subscribeProfile(function(profile)
     if self.active and not self:_applyProfile(profile) then
@@ -179,11 +266,53 @@ function Adapter:_present()
   return true
 end
 
+function Adapter:_schedulePresent()
+  if not self.active or self.terminated then
+    return false
+  end
+  removeEvent(self.raiseEvent)
+  local generation = self.generation
+  self.raiseEvent = addEvent(function()
+    self.raiseEvent = nil
+    if self.active and not self.terminated and
+        self.generation == generation then
+      self:_reclaimForeground()
+    end
+  end)
+  return true
+end
+
+function Adapter:_reclaimForeground()
+  if not self.active then
+    return false
+  end
+  if self.mobileUi.isPortraitGateActive() then
+    self.mobileUi.deferPortraitForeground(
+      'reconnecting', self.foregroundOwner)
+    if self.backdrop and not self.backdrop:isDestroyed() then
+      self.backdrop:hide()
+    end
+    return true
+  end
+  if self.mobileUi.supersedeModal then
+    self.mobileUi.supersedeModal()
+  end
+  self.cancelGestures()
+  self.acquiring = true
+  local accepted = self.mobileUi.setForeground(
+    'reconnecting', self.foregroundOwner)
+  self.acquiring = false
+  if not accepted or not self:_ownsForeground() then
+    return false
+  end
+  return self:_present()
+end
+
 function Adapter:_abandon()
   if not self.active then
     return
   end
-  self.generation = self.generation + 1
+  self:_nextGeneration()
   self.active = false
   self.retryPending = false
   self.logoutPending = false
@@ -200,7 +329,7 @@ function Adapter:show(reason)
   if self.mobileUi.supersedeModal then
     self.mobileUi.supersedeModal()
   end
-  self.generation = self.generation + 1
+  local generation = self:_nextGeneration()
   self.active = true
   self.retryPending = false
   self.logoutPending = false
@@ -209,27 +338,22 @@ function Adapter:show(reason)
     return false
   end
 
-  self.reasonLabel:setText(tostring(reason or tr('Connection lost.')))
-  self:_setButtonsEnabled()
-  if self.mobileUi.isPortraitGateActive() then
-    self.mobileUi.deferPortraitForeground(
-      'reconnecting', self.foregroundOwner)
-    self.backdrop:hide()
-    return true
+  if self.reasonLabel and not self.reasonLabel:isDestroyed() then
+    self.reasonLabel:setText(tostring(reason or tr('Connection lost.')))
   end
-
-  self.acquiring = true
-  local accepted = self.mobileUi.setForeground(
-    'reconnecting', self.foregroundOwner)
-  self.acquiring = false
-  if not accepted or not self:_ownsForeground() then
+  self:_bindActions(generation)
+  self:_setButtonsEnabled()
+  if not self:_reclaimForeground() then
     self:_abandon()
     return false
   end
-  return self:_present()
+  return true, generation
 end
 
-function Adapter:retryNow()
+function Adapter:retryNow(expectedGeneration)
+  if expectedGeneration ~= nil and expectedGeneration ~= self.generation then
+    return false
+  end
   if not self.active or self.retryPending or self.logoutPending then
     return false
   end
@@ -238,10 +362,11 @@ function Adapter:retryNow()
     return false
   end
 
+  local generation = self:_nextGeneration()
   self.retryPending = true
+  self:_bindActions(generation)
   self:_setButtonsEnabled()
-  local generation = self.generation
-  local ok, result = pcall(self.onRetry)
+  local ok, result = pcall(self.onRetry, generation)
   if not ok then
     self.logError(result)
   end
@@ -253,19 +378,24 @@ function Adapter:retryNow()
   return ok and result ~= false
 end
 
-function Adapter:logOut()
+function Adapter:logOut(expectedGeneration)
+  if expectedGeneration ~= nil and expectedGeneration ~= self.generation then
+    return false
+  end
   if not self.active or self.logoutPending then
     return false
   end
+  local generation = self:_nextGeneration()
   self.logoutPending = true
   self.retryPending = false
+  self:_bindActions(generation)
   self:_setButtonsEnabled()
-  local generation = self.generation
-  local ok, result = pcall(self.onLogout)
+  local ok, result = pcall(self.onLogout, generation)
   if not ok then
     self.logError(result)
   end
-  if self.active and self.generation == generation then
+  if result ~= 'pending' and self.active and
+      self.generation == generation then
     self:close()
   end
   return ok and result ~= false
@@ -275,17 +405,15 @@ function Adapter:updateReason(reason)
   if not self.active then
     return self:show(reason)
   end
-  self.generation = self.generation + 1
+  local generation = self:_nextGeneration()
   self.retryPending = false
   self.logoutPending = false
   if self.reasonLabel and not self.reasonLabel:isDestroyed() then
     self.reasonLabel:setText(tostring(reason or tr('Connection lost.')))
   end
+  self:_bindActions(generation)
   self:_setButtonsEnabled()
-  if self:_ownsForeground() then
-    self:_present()
-  end
-  return true
+  return self:_reclaimForeground(), generation
 end
 
 function Adapter:close()
@@ -293,10 +421,12 @@ function Adapter:close()
     return false
   end
   self.closing = true
-  self.generation = self.generation + 1
+  self:_nextGeneration()
   self.active = false
   self.retryPending = false
   self.logoutPending = false
+  removeEvent(self.raiseEvent)
+  self.raiseEvent = nil
   self.mobileUi.clearPortraitDeferredForeground(self.foregroundOwner)
   local ownsForeground = self:_ownsForeground()
   self:_destroyUi()
@@ -321,6 +451,14 @@ function Adapter:terminate()
     return
   end
   self.terminated = true
+  if self.appCallbacks then
+    disconnect(g_app, self.appCallbacks)
+    self.appCallbacks = nil
+  end
+  if self.gameCallbacks then
+    disconnect(g_game, self.gameCallbacks)
+    self.gameCallbacks = nil
+  end
   self:close()
 end
 
@@ -348,18 +486,27 @@ function MobileReconnecting.create(options)
     if adapter.closing or adapter.acquiring or not adapter.active then
       return
     end
-    if nextState == 'portrait' or nextState == 'modal' then
+    if nextState == 'portrait' then
       if adapter.backdrop and not adapter.backdrop:isDestroyed() then
         adapter.backdrop:hide()
       end
       return
     end
-    adapter:_abandon()
+    adapter:_reclaimForeground()
   end
   function adapter.foregroundOwner:onForegroundGained()
     if adapter.active then
       adapter:_present()
     end
   end
+  adapter.appCallbacks = {
+    onRun = function() adapter:_schedulePresent() end,
+    onUpdateFinished = function() adapter:_schedulePresent() end
+  }
+  adapter.gameCallbacks = {
+    onGameEnd = function() adapter:_schedulePresent() end
+  }
+  connect(g_app, adapter.appCallbacks)
+  connect(g_game, adapter.gameCallbacks)
   return adapter
 end

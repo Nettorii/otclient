@@ -139,9 +139,20 @@ function Host:_safeCall(callback, ...)
   local ok, result = pcall(callback, ...)
   if not ok then
     self.logError(result)
-    return false, nil
+    return false, result
   end
   return true, result
+end
+
+function Host:_reportShellCreateError(viewId, errorMessage)
+  if not self.onShellCreateError then
+    return
+  end
+  local reported, reportError = pcall(
+    self.onShellCreateError, viewId, errorMessage, self.getProfile())
+  if not reported then
+    self.logError(reportError)
+  end
 end
 
 function Host:_foreground()
@@ -649,31 +660,40 @@ function Host:_ensureBackdrop(profile)
 
   local ok, backdrop = self:_safeCall(self.createBackdrop)
   if not ok or not backdrop or backdrop:isDestroyed() then
+    self:_reportShellCreateError('drawer',
+      ok and 'drawer backdrop creation returned no live widget' or backdrop)
     return false
   end
 
-  local surface = backdrop:recursiveGetChildById('drawerSurface')
-  local title = backdrop:recursiveGetChildById('drawerTitle')
-  local content = backdrop:recursiveGetChildById('drawerContent')
-  local contentScrollBar =
-    backdrop:recursiveGetChildById('drawerContentScrollBar')
-  local navigation = backdrop:recursiveGetChildById('drawerNavigation')
-  local navigationScrollBar =
-    backdrop:recursiveGetChildById('drawerNavigationScrollBar')
-  if not surface or not title or not content or not contentScrollBar or
-      not navigation or
-      not navigationScrollBar then
+  local configured, shell = pcall(function()
+    local result = {
+      surface = backdrop:recursiveGetChildById('drawerSurface'),
+      title = backdrop:recursiveGetChildById('drawerTitle'),
+      content = backdrop:recursiveGetChildById('drawerContent'),
+      contentScrollBar =
+        backdrop:recursiveGetChildById('drawerContentScrollBar'),
+      navigation = backdrop:recursiveGetChildById('drawerNavigation'),
+      navigationScrollBar =
+        backdrop:recursiveGetChildById('drawerNavigationScrollBar')
+    }
+    assert(result.surface and result.title and result.content and
+      result.contentScrollBar and result.navigation and
+      result.navigationScrollBar, 'drawer shell is incomplete')
+    return result
+  end)
+  if not configured then
     backdrop:destroy()
+    self:_reportShellCreateError('drawer', shell)
     return false
   end
 
   self.backdrop = backdrop
-  self.surface = surface
-  self.title = title
-  self.content = content
-  self.contentScrollBar = contentScrollBar
-  self.navigation = navigation
-  self.navigationScrollBar = navigationScrollBar
+  self.surface = shell.surface
+  self.title = shell.title
+  self.content = shell.content
+  self.contentScrollBar = shell.contentScrollBar
+  self.navigation = shell.navigation
+  self.navigationScrollBar = shell.navigationScrollBar
   backdrop:setPhantom(false)
   backdrop:setEnabled(true)
   backdrop:hide()
@@ -772,8 +792,14 @@ function Host:_ensureBackdrop(profile)
     backdrop[event] = handler
   end
 
-  self:_bindGestureWidget(surface)
-  self:_renderNavigation()
+  self:_bindGestureWidget(self.surface)
+  local navigationRendered, navigationError =
+    pcall(self._renderNavigation, self)
+  if not navigationRendered then
+    self:_destroyBackdrop()
+    self:_reportShellCreateError('drawer', navigationError)
+    return false
+  end
   if not self:_applyGeometry(profile) then
     self:_destroyBackdrop()
     return false
@@ -1028,7 +1054,14 @@ function Host:open(id)
   end
 
   local previous = self.active
-  local holder = self.createWidget('MobileDrawerViewHost', self.content)
+  local holderCreated, holder = self:_safeCall(
+    self.createWidget, 'MobileDrawerViewHost', self.content)
+  if not holderCreated or not holder or holder:isDestroyed() then
+    self:_reportShellCreateError(entry.id,
+      holderCreated and 'drawer view holder returned no live widget' or holder)
+    self:_requestShellClose(transition)
+    return false
+  end
   holder:setEnabled(false)
   holder:hide()
   local record = {
@@ -1102,7 +1135,13 @@ function Host:open(id)
   holder:setEnabled(true)
   holder:show()
   self.title:setText(entry.descriptor.title)
-  self:_renderNavigation()
+  local navigationRendered, navigationError =
+    pcall(self._renderNavigation, self)
+  if not navigationRendered then
+    self:_reportShellCreateError(entry.id, navigationError)
+    self:close()
+    return false
+  end
   self.backdrop:show()
   self.backdrop:raise()
   self.backdrop:focus()
@@ -1191,6 +1230,7 @@ function MobileDrawer.create(options)
     registerActionHandler = options.registerActionHandler,
     onAvailabilityChange = options.onAvailabilityChange,
     onViewCreateError = options.onViewCreateError,
+    onShellCreateError = options.onShellCreateError,
     logError = options.logError or defaultLogError,
     registry = {},
     viewCount = 0,

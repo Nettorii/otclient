@@ -33,10 +33,15 @@
 BrowserWindow& g_browserWindow = (BrowserWindow&)g_window;
 
 extern "C" EMSCRIPTEN_KEEPALIVE void mobile_viewport_changed(
-    int left, int top, int right, int bottom, int keyboardHeight)
+    int left, int top, int right, int bottom, int keyboardHeight,
+    int viewportWidth, int viewportHeight)
 {
-    g_dispatcher.addEvent([left, top, right, bottom, keyboardHeight] {
-        g_browserWindow.setViewportMetrics({ left, top, right, bottom, keyboardHeight });
+    g_dispatcher.addEvent([left, top, right, bottom, keyboardHeight,
+                           viewportWidth, viewportHeight] {
+        g_browserWindow.setViewportMetrics({
+            left, top, right, bottom, keyboardHeight,
+            viewportWidth, viewportHeight
+        });
     });
 }
 

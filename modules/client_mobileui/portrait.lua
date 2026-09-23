@@ -1,5 +1,8 @@
 local portraitWidget
 local unsubscribeProfile
+local appCallbacks
+local gameCallbacks
+local raiseEvent
 local active = false
 local terminating = false
 local releasing = false
@@ -84,6 +87,35 @@ local function consumePointer(_, _, button)
     button == (MouseRightButton or 2)
 end
 
+local function raisePortraitNow()
+  if not active or not portraitWidget or portraitWidget:isDestroyed() then
+    return false
+  end
+  cancelGlobalInput()
+  portraitWidget:show()
+  portraitWidget:raise()
+  portraitWidget:focus()
+  if portraitWidget.grabKeyboard then
+    portraitWidget:grabKeyboard()
+  end
+  return true
+end
+
+local function schedulePortraitRaise()
+  if not active or terminating then
+    return false
+  end
+  removeEvent(raiseEvent)
+  local expectedGeneration = generation
+  raiseEvent = addEvent(function()
+    raiseEvent = nil
+    if active and generation == expectedGeneration then
+      raisePortraitNow()
+    end
+  end)
+  return true
+end
+
 local function destroyPortraitWidget()
   local widget = portraitWidget
   portraitWidget = nil
@@ -100,13 +132,47 @@ local function ensurePortraitWidget()
     return true
   end
 
-  local ok, widget = pcall(
-    g_ui.createWidget, 'MobilePortraitGate', g_ui.getRootWidget())
-  if not ok or not widget or widget:isDestroyed() then
-    g_logger.error(
-      '[client_mobileui] portrait view creation failed module=' ..
-      'client_mobileui view=portrait profile=portrait: ' ..
-      tostring(widget))
+  local createSafely = safeCreateMobileView
+  if type(createSafely) ~= 'function' then
+    createSafely = function(config)
+      local ok, result = pcall(config.create)
+      if ok then
+        return result
+      end
+      g_logger.error('[client_mobileui] portrait creation failed: ' ..
+        tostring(result))
+      return nil
+    end
+  end
+  local widget, fallback = createSafely({
+    module = 'client_mobileui',
+    view = 'portrait',
+    profile = getProfile(),
+    state = 'portrait',
+    owner = portraitOwner,
+    title = tr('Rotate your device'),
+    message = tr(
+      'The portrait view could not be loaded. Rotate to landscape and reload the client.'),
+    actions = {
+      {
+        text = tr('Reload'),
+        callback = function()
+          if g_app.restart then
+            g_app.restart()
+          end
+          return true
+        end
+      }
+    },
+    create = function()
+      return g_ui.createWidget(
+        'MobilePortraitGate', g_ui.getRootWidget())
+    end
+  })
+  if not widget then
+    widget = fallback and fallback.widget
+  end
+  if not widget or widget:isDestroyed() then
     return false
   end
 
@@ -115,7 +181,11 @@ local function ensurePortraitWidget()
   widget.onMouseMove = function() return true end
   widget.onMouseRelease = consumePointer
   widget.onKeyDown = function() return true end
-  widget.onDestroy = function()
+  local fallbackOnDestroy = widget.onDestroy
+  widget.onDestroy = function(...)
+    if fallbackOnDestroy then
+      fallbackOnDestroy(...)
+    end
     if portraitWidget == widget then
       portraitWidget = nil
     end
@@ -165,12 +235,7 @@ local function enterPortrait(profile)
     supersedeModal()
   end
   cancelGlobalInput()
-  portraitWidget:show()
-  portraitWidget:raise()
-  portraitWidget:focus()
-  if portraitWidget.grabKeyboard then
-    portraitWidget:grabKeyboard()
-  end
+  raisePortraitNow()
   safeNotify(true, profile)
   return true
 end
@@ -213,13 +278,7 @@ local function applyPortraitProfile(profile)
 end
 
 function portraitOwner:onForegroundGained()
-  if not active or not portraitWidget or portraitWidget:isDestroyed() then
-    return
-  end
-  cancelGlobalInput()
-  portraitWidget:show()
-  portraitWidget:raise()
-  portraitWidget:focus()
+  raisePortraitNow()
 end
 
 function portraitOwner:onForegroundLost(nextState, nextOwner)
@@ -285,6 +344,16 @@ function initPortrait()
     return
   end
   unsubscribeProfile = subscribeProfile(applyPortraitProfile)
+  appCallbacks = {
+    onRun = schedulePortraitRaise,
+    onUpdateFinished = schedulePortraitRaise
+  }
+  gameCallbacks = {
+    onGameStart = schedulePortraitRaise,
+    onGameEnd = schedulePortraitRaise
+  }
+  connect(g_app, appCallbacks)
+  connect(g_game, gameCallbacks)
   applyPortraitProfile(getProfile())
 end
 
@@ -297,6 +366,16 @@ function terminatePortrait()
     unsubscribeProfile()
     unsubscribeProfile = nil
   end
+  if appCallbacks then
+    disconnect(g_app, appCallbacks)
+    appCallbacks = nil
+  end
+  if gameCallbacks then
+    disconnect(g_game, gameCallbacks)
+    gameCallbacks = nil
+  end
+  removeEvent(raiseEvent)
+  raiseEvent = nil
   if active then
     releasing = true
     local state, owner = getForeground()

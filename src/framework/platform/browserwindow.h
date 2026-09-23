@@ -94,6 +94,7 @@ private:
 extern BrowserWindow& g_browserWindow;
 
 extern "C" EMSCRIPTEN_KEEPALIVE void mobile_viewport_changed(
-    int left, int top, int right, int bottom, int keyboardHeight);
+    int left, int top, int right, int bottom, int keyboardHeight,
+    int viewportWidth, int viewportHeight);
 
 #endif

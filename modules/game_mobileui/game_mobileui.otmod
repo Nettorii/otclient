@@ -5,6 +5,6 @@ Module
   website: https://github.com/mehah/otclient
   sandboxed: true
   scripts: [ status, actions, hotbar, drawer, chat, reconnecting, views/inventory, views/character, views/minimap, views/battle, views/vip, views/settings, game_mobileui ]
-  dependencies: [ client_mobileui, client_options, game_interface, game_console, game_actionbar, game_inventory, game_containers, game_skills, game_minimap, game_battle, game_viplist ]
+  dependencies: [ client_mobileui, client_entergame, client_options, game_interface, game_console, game_actionbar, game_inventory, game_containers, game_skills, game_minimap, game_battle, game_viplist ]
   @onLoad: init()
   @onUnload: terminate()

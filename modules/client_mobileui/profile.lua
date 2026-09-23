@@ -519,14 +519,22 @@ end
 
 local function readViewportMetrics()
   rootWidget = rootWidget or g_ui.getRootWidget()
+  local viewportWidth = getWindowMetric('getViewportWidth')
+  local viewportHeight = getWindowMetric('getViewportHeight')
+  if viewportWidth <= 0 then
+    viewportWidth = rootWidget:getWidth()
+  end
+  if viewportHeight <= 0 then
+    viewportHeight = rootWidget:getHeight()
+  end
   local controlPreset = readMobileOption(
     'mobileControlPreset', 'comfortable', 'getString')
   local handedness = readMobileOption(
     'mobileHandedness', 'standard', 'getString')
   local overlayOpacity = readMobileOption(
     'mobileOverlayOpacity', MOBILE_OPACITY_DEFAULT, 'getNumber')
-  return rootWidget:getWidth(),
-    rootWidget:getHeight(),
+  return viewportWidth,
+    viewportHeight,
     getWindowMetric('getSafeAreaInsetLeft'),
     getWindowMetric('getSafeAreaInsetTop'),
     getWindowMetric('getSafeAreaInsetRight'),

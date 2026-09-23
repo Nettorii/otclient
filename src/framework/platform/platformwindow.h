@@ -127,6 +127,8 @@ public:
     int getSafeAreaInsetRight() const { return m_viewportMetrics.safeRight; }
     int getSafeAreaInsetBottom() const { return m_viewportMetrics.safeBottom; }
     int getKeyboardHeight() const { return m_viewportMetrics.keyboardHeight; }
+    int getViewportWidth() const { return m_viewportMetrics.viewportWidth; }
+    int getViewportHeight() const { return m_viewportMetrics.viewportHeight; }
 
     bool isKeyPressed(const Fw::Key keyCode) { return m_keyInfo[keyCode].state; }
     bool isMouseButtonPressed(const Fw::MouseButton mouseButton)

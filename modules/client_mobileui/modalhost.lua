@@ -287,6 +287,10 @@ function showModal(config)
   if terminating then
     return createClosedHandle(config)
   end
+  local foregroundState = getForeground()
+  if foregroundState == 'reconnecting' then
+    return createClosedHandle(config)
+  end
   initModalHost()
 
   local previousState
@@ -316,13 +320,89 @@ function showModal(config)
   end
 
   local root = g_ui.getRootWidget()
-  local backdrop = g_ui.createWidget('MobileModalBackdrop', root)
-  local surface = backdrop:getChildById('modalSurface')
-  local titleLabel = surface:recursiveGetChildById('modalTitle')
-  local bodyArea = surface:recursiveGetChildById('modalBody')
-  local bodyScrollBar = surface:recursiveGetChildById('modalBodyScrollBar')
-  local footer = surface:recursiveGetChildById('modalFooter')
-  local footerScrollBar = surface:recursiveGetChildById('modalFooterScrollBar')
+  local partialBackdrop
+  local createSafely = safeCreateMobileView
+  if type(createSafely) ~= 'function' then
+    createSafely = function(createConfig)
+      local ok, result = pcall(createConfig.create)
+      if ok then
+        return result
+      end
+      if createConfig.cleanup then
+        pcall(createConfig.cleanup)
+      end
+      return nil
+    end
+  end
+  local shell, creationFallback = createSafely({
+    module = 'client_mobileui',
+    view = 'modal',
+    profile = getProfile(),
+    state = 'modal',
+    title = tr('Unable to open'),
+    message = tr(
+      'A required dialog could not be opened. Reload the client to continue safely.'),
+    actions = {
+      {
+        text = tr('Reload'),
+        callback = function()
+          if g_app.restart then
+            g_app.restart()
+          end
+          return true
+        end
+      }
+    },
+    create = function()
+      partialBackdrop = g_ui.createWidget('MobileModalBackdrop', root)
+      local surface = partialBackdrop:getChildById('modalSurface')
+      assert(surface, 'modal surface missing')
+      local titleLabel = surface:recursiveGetChildById('modalTitle')
+      local bodyArea = surface:recursiveGetChildById('modalBody')
+      local bodyScrollBar =
+        surface:recursiveGetChildById('modalBodyScrollBar')
+      local footer = surface:recursiveGetChildById('modalFooter')
+      local footerScrollBar =
+        surface:recursiveGetChildById('modalFooterScrollBar')
+      assert(titleLabel and bodyArea and bodyScrollBar and footer and
+        footerScrollBar, 'modal shell is incomplete')
+      return {
+        backdrop = partialBackdrop,
+        surface = surface,
+        titleLabel = titleLabel,
+        bodyArea = bodyArea,
+        bodyScrollBar = bodyScrollBar,
+        footer = footer,
+        footerScrollBar = footerScrollBar
+      }
+    end,
+    cleanup = function()
+      if partialBackdrop and not partialBackdrop:isDestroyed() then
+        partialBackdrop:destroy()
+      end
+    end
+  })
+  if not shell then
+    local closed = createClosedHandle(config)
+    if creationFallback and creationFallback.widget and
+        not creationFallback.widget:isDestroyed() then
+      setForeground('modal', creationFallback.owner)
+      creationFallback.widget:show()
+      creationFallback.widget:raise()
+      creationFallback.widget:focus()
+      if creationFallback.widget.grabKeyboard then
+        creationFallback.widget:grabKeyboard()
+      end
+    end
+    return closed
+  end
+  local backdrop = shell.backdrop
+  local surface = shell.surface
+  local titleLabel = shell.titleLabel
+  local bodyArea = shell.bodyArea
+  local bodyScrollBar = shell.bodyScrollBar
+  local footer = shell.footer
+  local footerScrollBar = shell.footerScrollBar
   local bodyScroller = createBodyScroller(bodyScrollBar)
   local footerScroller = createFooterScroller(footerScrollBar)
   local bodyWidget
@@ -501,27 +581,57 @@ function showModal(config)
     return true
   end
 
-  titleLabel:setText(config.title or '')
-  applyGeometry(getProfile())
+  local configured, configureError = pcall(function()
+    titleLabel:setText(config.title or '')
+    applyGeometry(getProfile())
 
-  for _, buttonConfig in ipairs(config.buttons or {}) do
-    local button = g_ui.createWidget('MobileModalButton', footer)
-    button:setText(buttonConfig.text or '')
-    button.onClick = function()
-      if footerScroller.consume() then
-        return
+    for _, buttonConfig in ipairs(config.buttons or {}) do
+      local button = g_ui.createWidget('MobileModalButton', footer)
+      button:setText(buttonConfig.text or '')
+      button.onClick = function()
+        if footerScroller.consume() then
+          return
+        end
+        safeCall(buttonConfig.callback)
       end
-      safeCall(buttonConfig.callback)
+      footerScroller.bind(button)
+      table.insert(buttons, button)
+      applyOverlayTree(button, getProfile())
     end
-    footerScroller.bind(button)
-    table.insert(buttons, button)
-    applyOverlayTree(button, getProfile())
-  end
-  footerScroller.bind(footer)
-  updateButtonWidths()
+    footerScroller.bind(footer)
+    updateButtonWidths()
 
-  if config.body then
-    handle:setBody(config.body)
+    if config.body then
+      assert(handle:setBody(config.body), 'modal body could not be attached')
+    end
+  end)
+  if not configured then
+    replacing = true
+    finish(true)
+    if config.body and not config.body:isDestroyed() then
+      config.body:destroy()
+    end
+    showMobileViewError({
+      module = 'client_mobileui',
+      view = 'modal',
+      profile = getProfile(),
+      state = 'modal',
+      title = tr('Unable to open'),
+      message = tr(
+        'A required dialog could not be opened. Reload the client to continue safely.'),
+      actions = {
+        {
+          text = tr('Reload'),
+          callback = function()
+            if g_app.restart then
+              g_app.restart()
+            end
+            return true
+          end
+        }
+      }
+    }, configureError)
+    return handle
   end
 
   if supersededDuringReplacement then
