@@ -943,6 +943,7 @@ elseif(WASM)
           -sINITIAL_MEMORY=1073741824
           --preload-file=../otclientrc.lua@otclientrc.lua
           --preload-file=../init.lua@init.lua
+          --preload-file=../config.ini@config.ini
           --preload-file=../data@data
           --preload-file=../mods@mods
           --preload-file=../modules@modules
