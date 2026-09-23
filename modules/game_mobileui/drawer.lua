@@ -304,7 +304,7 @@ end
 function Host:_finishGesture(button)
   if button ~= MouseLeftButton then
     self.gesture.startX = nil
-    return true
+    return false
   end
   local consumed = self.gesture.dragged == true
   local closeReady = self.gesture.closeReady == true
@@ -339,7 +339,7 @@ function Host:_bindGestureWidget(widget, scrollBar, scrollAxis)
     onMousePress = function(host, _, position, button)
       if button == MouseRightButton then
         host.gesture.suppressClick = true
-        return true
+        return false
       end
       if button ~= MouseLeftButton then
         return true
@@ -735,8 +735,15 @@ function Host:_ensureBackdrop(profile)
       if tap and releasedOutside then
         -- Keep the backdrop alive until this release has been consumed. Destroying
         -- it inline lets the same browser touch fall through to the game map.
+        local transition = host.transition
+        local active = host.active
+        local navigationGeneration = host.navigationGeneration
+        local suspensionGeneration = host.suspensionGeneration
         scheduleEvent(function()
           if binding.host == host and host.backdrop == backdrop and
+              host.transition == transition and host.active == active and
+              host.navigationGeneration == navigationGeneration and
+              host.suspensionGeneration == suspensionGeneration and
               not backdrop:isDestroyed() then
             host:close()
           end

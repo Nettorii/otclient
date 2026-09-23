@@ -30,6 +30,35 @@ local function desktopMinimap()
         mapController.ui.minimapBorder.minimap or nil
 end
 
+local function validCameraPosition(position)
+    return position and type(position.x) == 'number' and
+        type(position.y) == 'number' and type(position.z) == 'number' and
+        position.x > 0 and position.y > 0 and
+        position.z >= 0 and position.z <= 15
+end
+
+local function hasKnownMinimapTile(position)
+    if not validCameraPosition(position) or not g_map or
+        type(g_map.getMinimapColor) ~= 'function' then
+        return false
+    end
+    for _, offset in ipairs({
+        { 0, 0 }, { -4, 0 }, { 4, 0 }, { 0, -4 }, { 0, 4 },
+        { -8, -8 }, { 8, -8 }, { -8, 8 }, { 8, 8 }
+    }) do
+        local probe = {
+            x = position.x + offset[1],
+            y = position.y + offset[2],
+            z = position.z
+        }
+        local ok, color = pcall(g_map.getMinimapColor, probe)
+        if ok and tonumber(color) and tonumber(color) > 0 then
+            return true
+        end
+    end
+    return false
+end
+
 local function configureDrawerFlag(widget, flag, source)
     if not flag or flag.mobileDrawerConfigured then
         return flag
@@ -104,18 +133,29 @@ function createDrawerMinimap(parent)
         end
     end
 
-    local initial = drawerMinimapState
-    if not initial and source then
-        initial = {
+    local retained = drawerMinimapState
+    local canonical = nil
+    if source then
+        canonical = {
             camera = copyPosition(source:getCameraPosition()),
             zoom = source:getZoom()
         }
     end
     local player = g_game.getLocalPlayer()
-    local camera = initial and initial.camera or
-        (player and copyPosition(player:getPosition()) or nil)
-    if initial and initial.zoom ~= nil then
-        widget:setZoom(initial.zoom)
+    local playerPosition =
+        player and copyPosition(player:getPosition()) or nil
+    local camera = nil
+    if retained and hasKnownMinimapTile(retained.camera) then
+        camera = retained.camera
+    elseif canonical and hasKnownMinimapTile(canonical.camera) then
+        camera = canonical.camera
+    elseif validCameraPosition(playerPosition) then
+        camera = playerPosition
+    end
+    local zoom = retained and retained.zoom or
+        (canonical and canonical.zoom or nil)
+    if zoom ~= nil then
+        widget:setZoom(zoom)
     end
     if camera then
         widget:setCameraPosition(camera)

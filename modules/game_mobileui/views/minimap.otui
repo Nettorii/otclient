@@ -49,7 +49,7 @@ MobileMinimapView < Panel
 
     MobileMinimapButton
       id: minimapZoomOut
-      text: Zoom -
+      text: -
 
     MobileMinimapButton
       id: minimapCenter
@@ -57,11 +57,11 @@ MobileMinimapView < Panel
 
     MobileMinimapButton
       id: minimapZoomIn
-      text: Zoom +
+      text: +
 
     MobileMinimapButton
       id: minimapFloorUp
-      text: Floor up
+      text: Up
 
     Label
       id: minimapFloorValue
@@ -74,4 +74,4 @@ MobileMinimapView < Panel
 
     MobileMinimapButton
       id: minimapFloorDown
-      text: Floor down
+      text: Down

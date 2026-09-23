@@ -25,7 +25,7 @@ function View:_updateFloor()
   end
   local position = self.map:getCameraPosition()
   self:_widget('minimapFloorValue'):setText(
-    position and ('Floor ' .. tostring(position.z)) or 'Floor')
+    position and ('F' .. tostring(position.z)) or 'F')
 end
 
 function View:_restoreFlagInput()
@@ -69,6 +69,9 @@ function View:_isolateMapInput()
 end
 
 function View:_layoutControls(width)
+  if self.layingOut then
+    return true
+  end
   width = math.floor(tonumber(width) or 0)
   if width < CONTROL_SIZE then
     return false
@@ -81,14 +84,18 @@ function View:_layoutControls(width)
     #CONTROL_IDS, math.floor(width / CONTROL_SIZE)))
   local rows = math.ceil(#CONTROL_IDS / columns)
   local controlsHeight = rows * CONTROL_SIZE
+  local origin = controls:getPosition()
   if self.layoutWidth == width and
+      self.layoutX == origin.x and self.layoutY == origin.y and
       controls:getHeight() == controlsHeight then
     return true
   end
   self.layoutWidth = width
+  self.layoutX = origin.x
+  self.layoutY = origin.y
+  self.layingOut = true
   controls:setWidth(width)
   controls:setHeight(controlsHeight)
-  local origin = controls:getPosition()
   for index, id in ipairs(CONTROL_IDS) do
     local control = self:_widget(id)
     if control then
@@ -107,6 +114,7 @@ function View:_layoutControls(width)
   if self.holder then
     self.holder:setHeight(height)
   end
+  self.layingOut = false
   return true
 end
 
@@ -145,6 +153,25 @@ function View:create(parent)
   end
   self.root = g_ui.createWidget('MobileMinimapView', parent)
   self.root:setWidth(width)
+  local controls = self:_widget('minimapControls')
+  local previousControlsGeometryChange = controls.onGeometryChange
+  controls.onGeometryChange = function(widget, ...)
+    if previousControlsGeometryChange then
+      previousControlsGeometryChange(widget, ...)
+    end
+    if self.root and not self.root:isDestroyed() then
+      self:_layoutControls(self.root:getWidth())
+      self.controlsLayoutGeneration =
+        (self.controlsLayoutGeneration or 0) + 1
+      local generation = self.controlsLayoutGeneration
+      scheduleEvent(function()
+        if self.controlsLayoutGeneration == generation and self.root and
+            not self.root:isDestroyed() then
+          self:_layoutControls(self.root:getWidth())
+        end
+      end)
+    end
+  end
   if not self:_layoutControls(width) then
     self.root:destroy()
     self.root = nil
@@ -192,6 +219,7 @@ function View:onShow()
   end
   self.released = false
   self:_isolateMapInput()
+  self:_layoutControls(self.root:getWidth())
   self:_updateFloor()
   return true
 end
@@ -204,6 +232,8 @@ function View:onHide()
 end
 
 function View:destroy()
+  self.controlsLayoutGeneration =
+    (self.controlsLayoutGeneration or 0) + 1
   self:onHide()
   if self.root and not self.root:isDestroyed() then
     self.root:destroy()
@@ -212,6 +242,8 @@ function View:destroy()
   self.root = nil
   self.holder = nil
   self.layoutWidth = nil
+  self.layoutX = nil
+  self.layoutY = nil
 end
 
 function MobileMinimapDrawer.createDescriptor(options)
