@@ -30,6 +30,42 @@ function MobileReconnecting.computeGeometry(profile)
   }
 end
 
+local function fitProfileToRoot(profile, root)
+  if not root or type(root.getWidth) ~= 'function' or
+      type(root.getHeight) ~= 'function' then
+    return profile
+  end
+
+  local rootWidth = integer(root:getWidth())
+  local rootHeight = integer(root:getHeight())
+  local safe = profile.safe or {}
+  local safeLeft = integer(safe.left)
+  local safeTop = integer(safe.top)
+  local safeRight = integer(safe.right)
+  local safeBottom = integer(safe.bottom)
+  local keyboardHeight = integer(profile.keyboardHeight)
+  local sourceWidth = integer(profile.usableWidth) + safeLeft + safeRight
+  local sourceHeight = integer(profile.usableHeight) + safeTop + safeBottom +
+    keyboardHeight
+  if rootWidth == 0 or rootHeight == 0 or sourceWidth == 0 or
+      sourceHeight == 0 then
+    return profile
+  end
+
+  local scaleX = math.min(1, rootWidth / sourceWidth)
+  local scaleY = math.min(1, rootHeight / sourceHeight)
+  return {
+    usableWidth = integer(profile.usableWidth * scaleX),
+    usableHeight = integer(profile.usableHeight * scaleY),
+    safe = {
+      left = integer(safeLeft * scaleX),
+      top = integer(safeTop * scaleY),
+      right = integer(safeRight * scaleX),
+      bottom = integer(safeBottom * scaleY)
+    }
+  }
+end
+
 function MobileReconnecting.runSelfTests()
   for _, profile in ipairs({
     {
@@ -107,7 +143,8 @@ function Adapter:_applyProfile(profile)
   if not self.surface or self.surface:isDestroyed() then
     return false
   end
-  local geometry = MobileReconnecting.computeGeometry(profile)
+  local geometry = MobileReconnecting.computeGeometry(
+    fitProfileToRoot(profile, self.getRoot()))
   if not geometry then
     return false
   end
