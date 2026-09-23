@@ -124,6 +124,7 @@ public:
     void setVerticalSync(bool enable);
     void setIcon(const std::string& iconFile);
     void setClipboardText(const std::string_view text);
+    void hideVirtualKeyboard() override;
 
     Size getDisplaySize();
     std::string getClipboardText();

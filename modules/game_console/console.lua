@@ -158,7 +158,10 @@ function createSemanticMessageAdapter(maxMessages, onError)
     local adapter = {
         maxMessages = maxMessages,
         channels = {},
-        subscribers = {}
+        subscribers = {},
+        queue = {},
+        queueHead = 1,
+        dispatching = false
     }
 
     function adapter:getRecentMessages(channelName, limit)
@@ -208,36 +211,51 @@ function createSemanticMessageAdapter(maxMessages, onError)
             color = tostring(message.color or ''),
             timestamp = tonumber(message.timestamp) or os.time()
         }
-        local buffer = self.channels[accepted.channel]
-        if not buffer then
-            buffer = { items = {}, head = 1, size = 0 }
-            self.channels[accepted.channel] = buffer
+        self.queue[#self.queue + 1] = accepted
+        if self.dispatching then
+            return
         end
 
-        local index
-        if buffer.size < self.maxMessages then
-            index = ((buffer.head + buffer.size - 1) % self.maxMessages) + 1
-            buffer.size = buffer.size + 1
-        else
-            index = buffer.head
-            buffer.head = (buffer.head % self.maxMessages) + 1
-        end
-        buffer.items[index] = accepted
+        self.dispatching = true
+        while self.queueHead <= #self.queue do
+            local current = self.queue[self.queueHead]
+            self.queueHead = self.queueHead + 1
+            local buffer = self.channels[current.channel]
+            if not buffer then
+                buffer = { items = {}, head = 1, size = 0 }
+                self.channels[current.channel] = buffer
+            end
 
-        local callbacks = {}
-        for _, entry in ipairs(self.subscribers) do
-            callbacks[#callbacks + 1] = entry.callback
-        end
-        for _, callback in ipairs(callbacks) do
-            local ok, errorMessage = pcall(callback, copySemanticMessage(accepted))
-            if not ok then
-                if onError then
-                    pcall(onError, errorMessage)
-                elseif perror then
-                    perror('console message subscriber failed: ' .. tostring(errorMessage))
+            local index
+            if buffer.size < self.maxMessages then
+                index = ((buffer.head + buffer.size - 1) % self.maxMessages) + 1
+                buffer.size = buffer.size + 1
+            else
+                index = buffer.head
+                buffer.head = (buffer.head % self.maxMessages) + 1
+            end
+            buffer.items[index] = current
+
+            local callbacks = {}
+            for _, entry in ipairs(self.subscribers) do
+                callbacks[#callbacks + 1] = entry.callback
+            end
+            for _, callback in ipairs(callbacks) do
+                local ok, errorMessage =
+                    pcall(callback, copySemanticMessage(current))
+                if not ok then
+                    if onError then
+                        pcall(onError, errorMessage)
+                    elseif perror then
+                        perror('console message subscriber failed: ' ..
+                            tostring(errorMessage))
+                    end
                 end
             end
         end
+        self.queue = {}
+        self.queueHead = 1
+        self.dispatching = false
     end
 
     function adapter:clear(channelName)
@@ -251,7 +269,86 @@ function createSemanticMessageAdapter(maxMessages, onError)
     return adapter
 end
 
+local function copySemanticChannelChange(change)
+    local channelsCopy = {}
+    for index, channelName in ipairs(change.channels or {}) do
+        channelsCopy[index] = channelName
+    end
+    return {
+        kind = change.kind,
+        channel = change.channel,
+        current = change.current,
+        channels = channelsCopy
+    }
+end
+
+function createSemanticChannelAdapter(onError)
+    local adapter = {
+        subscribers = {},
+        queue = {},
+        queueHead = 1,
+        dispatching = false
+    }
+
+    function adapter:subscribe(callback)
+        assert(type(callback) == 'function',
+            'channel subscriber must be a function')
+        local entry = { callback = callback }
+        self.subscribers[#self.subscribers + 1] = entry
+        local subscribed = true
+        return function()
+            if not subscribed then
+                return
+            end
+            subscribed = false
+            for index, candidate in ipairs(self.subscribers) do
+                if candidate == entry then
+                    table.remove(self.subscribers, index)
+                    break
+                end
+            end
+        end
+    end
+
+    function adapter:accept(change)
+        local accepted = copySemanticChannelChange(change)
+        self.queue[#self.queue + 1] = accepted
+        if self.dispatching then
+            return
+        end
+
+        self.dispatching = true
+        while self.queueHead <= #self.queue do
+            local current = self.queue[self.queueHead]
+            self.queueHead = self.queueHead + 1
+            local callbacks = {}
+            for _, entry in ipairs(self.subscribers) do
+                callbacks[#callbacks + 1] = entry.callback
+            end
+            for _, callback in ipairs(callbacks) do
+                local ok, errorMessage =
+                    pcall(callback, copySemanticChannelChange(current))
+                if not ok then
+                    if onError then
+                        pcall(onError, errorMessage)
+                    elseif perror then
+                        perror('console channel subscriber failed: ' ..
+                            tostring(errorMessage))
+                    end
+                end
+            end
+        end
+        self.queue = {}
+        self.queueHead = 1
+        self.dispatching = false
+    end
+
+    return adapter
+end
+
 local semanticMessages = createSemanticMessageAdapter(SEMANTIC_MESSAGE_MAX)
+local semanticChannels = createSemanticChannelAdapter()
+local publishChannelChange
 
 function getRecentMessages(channelName, limit)
     return semanticMessages:getRecentMessages(channelName, limit)
@@ -259,6 +356,10 @@ end
 
 function subscribeMessages(callback)
     return semanticMessages:subscribe(callback)
+end
+
+function subscribeChannelChanges(callback)
+    return semanticChannels:subscribe(callback)
 end
 
 consolePanel = nil
@@ -713,6 +814,15 @@ function onTabChange(tabBar, tab)
         removeEvent(tab.newMessageEvent)
         tab.newMessageEvent = nil
     end
+    -- UIMoveableTabBar invokes onTabChange immediately before assigning its
+    -- currentTab. Publish only after the console's semantic current state
+    -- matches the selected, visible tab.
+    if table.find(tabBar.tabs or {}, tab) then
+        tabBar.currentTab = tab
+    end
+    if publishChannelChange then
+        publishChannelChange('selected', tab:getText(), tab:getText())
+    end
 end
 
 function clear()
@@ -741,6 +851,9 @@ function clear()
         local tab = consoleTabBar:getTab(channelName)
         if tab and tab ~= defaultTab and tab ~= serverTab and not tab.npcChat then
             consoleTabBar:removeTab(tab)
+            if publishChannelChange then
+                publishChannelChange('removed', channelName)
+            end
         end
     end
     channels = {}
@@ -906,12 +1019,17 @@ end
 
 function addTab(name, focus)
     local tab = getTab(name)
+    local added = false
     if tab then -- is channel already open
         if not focus then
             focus = true
         end
     else
         tab = consoleTabBar:addTab(name, nil, processChannelTabMenu)
+        added = true
+    end
+    if added and publishChannelChange then
+        publishChannelChange('added', tab:getText())
     end
     if focus then
         consoleTabBar:selectTab(tab)
@@ -931,12 +1049,24 @@ function addTab(name, focus)
     return tab
 end
 
+local function removeTabWidget(tab)
+    local channelName = tab:getText()
+    semanticMessages:clear(channelName)
+    if getCurrentTab() == tab then
+        consoleTabBar:selectTab(defaultTab)
+    end
+    consoleTabBar:removeTab(tab)
+    if publishChannelChange then
+        publishChannelChange('removed', channelName)
+    end
+end
+
 function removeTab(tab)
     if type(tab) == 'string' then
         tab = consoleTabBar:getTab(tab)
     end
 
-    if tab == defaultTab or tab == serverTab then
+    if not tab or tab == defaultTab or tab == serverTab then
         return
     end
 
@@ -964,11 +1094,7 @@ function removeTab(tab)
         g_game.closeNpcChannel()
     end
 
-    semanticMessages:clear(tab:getText())
-    if getCurrentTab() == tab then
-        consoleTabBar:selectTab(defaultTab)
-    end
-    consoleTabBar:removeTab(tab)
+    removeTabWidget(tab)
 end
 
 function removeCurrentTab()
@@ -1020,13 +1146,47 @@ function getOpenChannelNames()
     return result
 end
 
+publishChannelChange = function(kind, channelName, currentChannelName)
+    semanticChannels:accept({
+        kind = tostring(kind or ''),
+        channel = channelName and tostring(channelName) or nil,
+        current = currentChannelName or getCurrentChannelName(),
+        channels = getOpenChannelNames()
+    })
+end
+
 function selectChannel(channelName)
     local tab = getTab(channelName)
     if not tab then
         return nil
     end
-    consoleTabBar:selectTab(tab)
-    return tab:getText()
+
+    local guard = #getOpenChannelNames() + 1
+    if table.find(consoleTabBar.preTabs or {}, tab) then
+        if not getCurrentTab() and #(consoleTabBar.tabs or {}) > 0 then
+            consoleTabBar:selectTab(consoleTabBar.tabs[1])
+        end
+        while table.find(consoleTabBar.preTabs or {}, tab) and guard > 0 do
+            consoleTabBar:selectPrevTab()
+            guard = guard - 1
+        end
+    elseif table.find(consoleTabBar.postTabs or {}, tab) then
+        if not getCurrentTab() and #(consoleTabBar.tabs or {}) > 0 then
+            consoleTabBar:selectTab(consoleTabBar.tabs[1])
+        end
+        while table.find(consoleTabBar.postTabs or {}, tab) and guard > 0 do
+            consoleTabBar:selectNextTab()
+            guard = guard - 1
+        end
+    end
+
+    if not table.find(consoleTabBar.tabs or {}, tab) then
+        return nil
+    end
+    if getCurrentTab() ~= tab then
+        consoleTabBar:selectTab(tab)
+    end
+    return getCurrentChannelName()
 end
 
 function selectNextChannel()
@@ -1471,6 +1631,16 @@ function addTabText(text, speaktype, tab, creatureName, semanticMessage)
         end
     end
     label.name = creatureName
+    if semanticMessage then
+        label.semanticMessage = {
+            name = semanticMessage.name,
+            level = semanticMessage.level,
+            mode = semanticMessage.mode,
+            text = semanticMessage.text,
+            color = semanticMessage.color,
+            timestamp = semanticMessage.timestamp
+        }
+    end
     consoleBuffer.onMouseRelease = function(self, mousePos, mouseButton)
         processMessageMenu(mousePos, mouseButton, nil, nil, nil, tab)
     end
@@ -1710,7 +1880,8 @@ function processMessageMenu(mousePos, mouseButton, creatureName, text, label, ta
         if tab.violations and creatureName then
             menu:addSeparator()
             menu:addOption(tr('Process') .. ' ' .. creatureName, function()
-                processViolation(creatureName, text)
+                processViolation(creatureName, text,
+                    label and label.semanticMessage or nil)
             end)
             menu:addOption(tr('Remove') .. ' ' .. creatureName, function()
                 g_game.closeRuleViolation(creatureName)
@@ -2102,25 +2273,25 @@ function onCloseChannel(channelId)
     local channel = channels[channelId]
     if channel then
         local tab = getTab(channel)
+        channels[channelId] = nil
         if tab then
-            consoleTabBar:removeTab(tab)
-        end
-        semanticMessages:clear(channel)
-        for k, v in pairs(channels) do
-            if (k == tab.channelId) then
-                channels[k] = nil
+            removeTabWidget(tab)
+        else
+            semanticMessages:clear(channel)
+            if publishChannelChange then
+                publishChannelChange('removed', channel)
             end
         end
     end
 end
 
-function processViolation(name, text)
+function processViolation(name, text, semanticMessage)
     local tabname = name .. '\'...'
     local tab = addTab(tabname, true)
     channels[tabname] = tabname
     tab.violationChatName = name
     g_game.openRuleViolation(name)
-    addTabText(text, SpeakTypesSettings.say, tab, name)
+    addTabText(text, SpeakTypesSettings.say, tab, name, semanticMessage)
 end
 
 function onRuleViolationChannel(channelId)

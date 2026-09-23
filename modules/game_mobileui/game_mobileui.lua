@@ -445,6 +445,8 @@ function foregroundOwner:onForegroundGained()
     releaseGameplayForeground()
     return
   end
+  controlsSuppressed = false
+  setControlsVisible(true)
   synchronizeJoystick()
   synchronizeActions()
   synchronizeHotbar()

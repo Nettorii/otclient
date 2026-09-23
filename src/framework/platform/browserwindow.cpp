@@ -35,7 +35,9 @@ BrowserWindow& g_browserWindow = (BrowserWindow&)g_window;
 extern "C" EMSCRIPTEN_KEEPALIVE void mobile_viewport_changed(
     int left, int top, int right, int bottom, int keyboardHeight)
 {
-    g_browserWindow.setViewportMetrics({ left, top, right, bottom, keyboardHeight });
+    g_dispatcher.addEvent([left, top, right, bottom, keyboardHeight] {
+        g_browserWindow.setViewportMetrics({ left, top, right, bottom, keyboardHeight });
+    });
 }
 
 stdext::map<char, Fw::Key> m_keyMapStr;
@@ -554,6 +556,22 @@ void BrowserWindow::setClipboardText(const std::string_view text) {
         navigator.clipboard.writeText(UTF8ToString($0));
     }, content.c_str());
     // clang-format on
+}
+
+void BrowserWindow::hideVirtualKeyboard() {
+    // DOM access must run on the browser main thread. Both APIs are optional
+    // and the editable element can already be gone during shutdown.
+    MAIN_THREAD_ASYNC_EM_ASM({
+        const titleText = document.getElementById("title-text");
+        if (titleText) {
+            titleText.blur();
+        }
+        if (typeof navigator !== "undefined" &&
+            "virtualKeyboard" in navigator &&
+            navigator.virtualKeyboard.hide) {
+            navigator.virtualKeyboard.hide();
+        }
+    });
 }
 
 Size BrowserWindow::getDisplaySize() {

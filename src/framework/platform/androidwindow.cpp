@@ -345,6 +345,10 @@ void AndroidWindow::setClipboardText(const std::string_view text) {
     g_androidManager.setClipboardText(std::string(text));
 }
 
+void AndroidWindow::hideVirtualKeyboard() {
+    g_androidManager.hideKeyboard();
+}
+
 Size AndroidWindow::getDisplaySize() {
     return m_size;
 }

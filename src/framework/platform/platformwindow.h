@@ -78,6 +78,7 @@ public:
     virtual void setVerticalSync(bool enable) = 0;
     virtual void setIcon(const std::string& iconFile) = 0;
     virtual void setClipboardText(std::string_view text) = 0;
+    virtual void hideVirtualKeyboard() {}
 
     // This method is intentionally left empty because title bar color customization
     // is only supported on Windows 10/11 via the DWM API. On other platforms,

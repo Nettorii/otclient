@@ -60,6 +60,7 @@ public:
     void setVerticalSync(bool enable) override;
     void setIcon(const std::string& iconFile) override;
     void setClipboardText(const std::string_view text) override;
+    void hideVirtualKeyboard() override;
     void setRunning(bool running) { m_running = running; }
 
     void handleResizeCallback(const EmscriptenUiEvent* event);

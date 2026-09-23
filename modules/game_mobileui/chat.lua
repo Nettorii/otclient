@@ -18,6 +18,29 @@ local function validHotbarPage(page)
   return nil
 end
 
+local function isContinuationByte(byte)
+  return byte and byte >= 0x80 and byte < 0xC0
+end
+
+local function boundaryBeforeOrAt(text, cursor)
+  cursor = math.max(0, math.min(#text, tonumber(cursor) or #text))
+  while cursor > 0 and isContinuationByte(text:byte(cursor + 1)) do
+    cursor = cursor - 1
+  end
+  return cursor
+end
+
+local function boundaryAfter(text, boundary)
+  if boundary >= #text then
+    return #text
+  end
+  local cursor = boundary + 1
+  while cursor < #text and isContinuationByte(text:byte(cursor + 1)) do
+    cursor = cursor + 1
+  end
+  return cursor
+end
+
 function MobileChat.computeGeometry(profile)
   profile = profile or {}
   local safe = profile.safe or {}
@@ -134,25 +157,101 @@ function Adapter:_appendMessage(message)
 end
 
 function Adapter:_loadChannel(channelName)
-  channelName = tostring(channelName or '')
+  channelName = channelName and tostring(channelName) or nil
   self.currentChannel = channelName
   if self.channelLabel and not self.channelLabel:isDestroyed() then
-    self.channelLabel:setText(channelName)
+    self.channelLabel:setText(channelName or '')
   end
   self:_destroyRows()
-  if not self.console or
+  if not channelName or not self.console or
       type(self.console.getRecentMessages) ~= 'function' then
+    self:_updateChannelControls()
     return
   end
   for _, message in ipairs(
       self.console.getRecentMessages(channelName, self.maxVisibleRows)) do
     self:_appendMessage(message)
   end
+  self:_updateChannelControls()
+end
+
+function Adapter:_updateChannelControls()
+  local count = 0
+  if self.console and
+      type(self.console.getOpenChannelNames) == 'function' then
+    count = #self.console.getOpenChannelNames()
+  end
+  local enabled = self.currentChannel ~= nil and count > 1
+  for _, button in ipairs({
+    self.previousChannel, self.nextChannel
+  }) do
+    if button and button.setEnabled and
+        (not button.isDestroyed or not button:isDestroyed()) then
+      button:setEnabled(enabled)
+    end
+  end
+end
+
+function Adapter:_reconcileChannel(preferredChannel)
+  local names = {}
+  local hasChannelList = self.console and
+    type(self.console.getOpenChannelNames) == 'function'
+  if hasChannelList then
+    names = self.console.getOpenChannelNames()
+  end
+  local selected = preferredChannel
+  if selected == nil and self.console and
+      type(self.console.getCurrentChannelName) == 'function' then
+    selected = self.console.getCurrentChannelName()
+  end
+  if selected == nil then
+    selected = self:_activeChannelName()
+  end
+
+  local valid = not hasChannelList and selected ~= nil
+  if hasChannelList then
+    for _, name in ipairs(names) do
+      if name == selected then
+        valid = true
+        break
+      end
+    end
+  end
+  if not valid then
+    selected = nil
+    local activeName = self:_activeChannelName()
+    for _, name in ipairs(names) do
+      if name == activeName then
+        selected = activeName
+        break
+      end
+    end
+    if not selected then
+      selected = names[1]
+    end
+  end
+
+  if selected ~= self.currentChannel then
+    self:_loadChannel(selected)
+  else
+    self:_updateChannelControls()
+  end
+  return selected
+end
+
+function Adapter:_onChannelChange(change, session)
+  if not self.open or self.session ~= session then
+    return
+  end
+  self:_reconcileChannel(change and change.current or nil)
 end
 
 function Adapter:_onMessage(message, session)
-  if not self.open or self.session ~= session or
-      message.channel ~= self.currentChannel then
+  if not self.open or self.session ~= session then
+    return
+  end
+  self:_reconcileChannel()
+  if message.channel ~= self.currentChannel then
     return
   end
   self:_appendMessage(message)
@@ -177,7 +276,13 @@ function Adapter:_applyProfile(profile)
   return true
 end
 
-function Adapter:_releaseKeyboardFocus()
+function Adapter:_hideKeyboard()
+  if self.hideKeyboard then
+    pcall(self.hideKeyboard)
+  end
+end
+
+function Adapter:_releaseKeyboardFocus(hideKeyboard)
   if self.focusEvent then
     self.cancel(self.focusEvent)
     self.focusEvent = nil
@@ -189,6 +294,9 @@ function Adapter:_releaseKeyboardFocus()
   local root = self.getRoot()
   if root and root.focus then
     root:focus()
+  end
+  if hideKeyboard then
+    self:_hideKeyboard()
   end
 end
 
@@ -242,23 +350,7 @@ function Adapter:_switchChannel(direction)
     return false
   end
   local channelName
-  if type(self.console.getOpenChannelNames) == 'function' and
-      type(self.console.selectChannel) == 'function' then
-    local names = self.console.getOpenChannelNames()
-    local current = self.currentChannel
-    local currentIndex
-    for index, name in ipairs(names) do
-      if name == current then
-        currentIndex = index
-        break
-      end
-    end
-    if not currentIndex or #names < 2 then
-      return false
-    end
-    local nextIndex = ((currentIndex - 1 + direction) % #names) + 1
-    channelName = self.console.selectChannel(names[nextIndex])
-  elseif direction < 0 and
+  if direction < 0 and
       type(self.console.selectPreviousChannel) == 'function' then
     channelName = self.console.selectPreviousChannel()
   elseif direction > 0 and
@@ -277,7 +369,7 @@ function Adapter:_switchChannel(direction)
       return false
     end
   end
-  self:_loadChannel(channelName or self:_activeChannelName())
+  self:_reconcileChannel(channelName)
   self:_focusInput(false)
   return true
 end
@@ -306,7 +398,29 @@ function Adapter:navigateHistory(step)
   return text
 end
 
-function Adapter:_backspace()
+function Adapter:_setCursorWithSelection(target, keyboardModifiers)
+  local input = self.input
+  if not input then
+    return false
+  end
+  local current = input:getCursorPos()
+  if keyboardModifiers == KeyboardShiftModifier and input.setSelection then
+    local anchor = current
+    if input.hasSelection and input:hasSelection() and
+        input.getSelectionStart and input.getSelectionEnd then
+      local selectionStart = input:getSelectionStart()
+      local selectionEnd = input:getSelectionEnd()
+      anchor = current == selectionStart and selectionEnd or selectionStart
+    end
+    input:setSelection(anchor, target)
+  elseif input.clearSelection then
+    input:clearSelection()
+  end
+  input:setCursorPos(target)
+  return true
+end
+
+function Adapter:_deleteCodepoint(deleteRight)
   local input = self.input
   if not input then
     return false
@@ -320,20 +434,91 @@ function Adapter:_backspace()
   local text = input:getText()
   local cursor = input.getCursorPos and input:getCursorPos() or #text
   cursor = math.max(0, math.min(#text, tonumber(cursor) or #text))
-  if cursor == 0 then
+  local start = boundaryBeforeOrAt(text, cursor)
+  local finish
+  if start ~= cursor then
+    finish = boundaryAfter(text, start)
+  elseif deleteRight then
+    if start >= #text then
+      input:setCursorPos(#text)
+      return true
+    end
+    finish = boundaryAfter(text, start)
+  else
+    if start == 0 then
+      input:setCursorPos(0)
+      return true
+    end
+    finish = start
+    start = boundaryBeforeOrAt(text, start - 1)
+  end
+  input:setText(text:sub(1, start) .. text:sub(finish + 1))
+  input:setCursorPos(start)
+  return true
+end
+
+function Adapter:_backspace()
+  return self:_deleteCodepoint(false)
+end
+
+function Adapter:_handleEditKey(keyCode, keyboardModifiers)
+  if keyboardModifiers ~= KeyboardNoModifier and
+      keyboardModifiers ~= KeyboardShiftModifier then
+    return false
+  end
+  if keyCode == KeyBackspace and
+      keyboardModifiers == KeyboardNoModifier then
+    return self:_deleteCodepoint(false)
+  end
+  if keyCode == KeyDelete and
+      keyboardModifiers == KeyboardNoModifier then
+    return self:_deleteCodepoint(true)
+  end
+
+  local input = self.input
+  if not input then
+    return false
+  end
+  local text = input:getText()
+  local cursor = math.max(0, math.min(
+    #text, tonumber(input:getCursorPos()) or #text))
+  local normalized = boundaryBeforeOrAt(text, cursor)
+  local target
+  if keyCode == KeyLeft then
+    target = normalized
+    if normalized == cursor and normalized > 0 then
+      target = boundaryBeforeOrAt(text, normalized - 1)
+    end
+  elseif keyCode == KeyRight then
+    target = boundaryAfter(text, normalized)
+  elseif keyCode == KeyHome then
+    target = 0
+  elseif keyCode == KeyEnd then
+    target = #text
+  else
+    return false
+  end
+  return self:_setCursorWithSelection(target, keyboardModifiers)
+end
+
+function Adapter:_restoreHotbar(session, openedGameSession)
+  local page = self.previousHotbarPage
+  if not page or self.session ~= session or
+      self.gameSession ~= openedGameSession or not self.gameActive() then
+    return false
+  end
+  self.previousHotbarPage = nil
+  self.setHotbarPage(page)
+  return true
+end
+
+function Adapter:_clearSessionSnapshot(session)
+  if self.session ~= session then
     return true
   end
-  local firstByte = cursor
-  while firstByte > 1 do
-    local byte = text:byte(firstByte)
-    if not byte or byte < 0x80 or byte >= 0xC0 then
-      break
-    end
-    firstByte = firstByte - 1
-  end
-  input:setText(text:sub(1, firstByte - 1) .. text:sub(cursor + 1))
-  input:setCursorPos(firstByte - 1)
-  return true
+  self.previousForegroundOwner = nil
+  self.previousHotbarPage = nil
+  self.openedGameSession = nil
 end
 
 function Adapter:send()
@@ -345,8 +530,11 @@ function Adapter:send()
   if not text or not text:find('%S') then
     return false
   end
+  self:_reconcileChannel()
   local tab = self:_activeTab()
-  if not tab then
+  local tabName = tab and type(tab.getText) == 'function' and
+    tab:getText() or nil
+  if not tab or tabName ~= self.currentChannel then
     return false
   end
 
@@ -380,7 +568,7 @@ function Adapter:_handleEscape()
   local profile = self.profile or self.mobileUi.getProfile()
   if integer(profile and profile.keyboardHeight) > 0 then
     self.keyboardDismissed = true
-    self:_releaseKeyboardFocus()
+    self:_releaseKeyboardFocus(true)
     return true
   end
   return self:close()
@@ -422,24 +610,23 @@ function Adapter:_configureUi()
   self.channelLabel = self.backdrop:recursiveGetChildById('chatChannel')
   local send = self.backdrop:recursiveGetChildById('chatSend')
   local close = self.backdrop:recursiveGetChildById('chatClose')
-  local previous =
+  self.previousChannel =
     self.backdrop:recursiveGetChildById('chatPreviousChannel')
-  local nextChannel =
+  self.nextChannel =
     self.backdrop:recursiveGetChildById('chatNextChannel')
   assert(self.surface and self.messageList and self.input and
-    self.channelLabel and send and close and previous and nextChannel,
+    self.channelLabel and send and close and self.previousChannel and
+    self.nextChannel,
     'mobile chat UI is incomplete')
 
   send.onClick = function() return self:send() end
   close.onClick = function() return self:close() end
-  previous.onClick = function() return self:_switchChannel(-1) end
-  nextChannel.onClick = function() return self:_switchChannel(1) end
+  self.previousChannel.onClick =
+    function() return self:_switchChannel(-1) end
+  self.nextChannel.onClick =
+    function() return self:_switchChannel(1) end
   self.input.onKeyPress = function(_, keyCode, keyboardModifiers)
-    if keyCode == KeyBackspace and
-        keyboardModifiers == KeyboardNoModifier then
-      return self:_backspace()
-    end
-    return false
+    return self:_handleEditKey(keyCode, keyboardModifiers)
   end
   local onKeyDown = function(_, keyCode, keyboardModifiers)
     return self:_onKeyDown(keyCode, keyboardModifiers)
@@ -460,6 +647,12 @@ function Adapter:_createUi(session)
   self.unsubscribeMessages = self.console.subscribeMessages(function(message)
     self:_onMessage(message, session)
   end)
+  if type(self.console.subscribeChannelChanges) == 'function' then
+    self.unsubscribeChannels =
+      self.console.subscribeChannelChanges(function(change)
+        self:_onChannelChange(change, session)
+      end)
+  end
   self.unsubscribeProfile = self.mobileUi.subscribeProfile(function(profile)
     if self.open and self.session == session then
       self:_applyProfile(profile)
@@ -482,7 +675,11 @@ function Adapter:_cleanupUi()
     self.unsubscribeProfile()
     self.unsubscribeProfile = nil
   end
-  self:_releaseKeyboardFocus()
+  if self.unsubscribeChannels then
+    self.unsubscribeChannels()
+    self.unsubscribeChannels = nil
+  end
+  self:_releaseKeyboardFocus(true)
   if self.backdrop and not self.backdrop:isDestroyed() then
     self.destroying = true
     self.backdrop:ungrabKeyboard()
@@ -495,13 +692,16 @@ function Adapter:_cleanupUi()
   self.messageScrollBar = nil
   self.input = nil
   self.channelLabel = nil
+  self.previousChannel = nil
+  self.nextChannel = nil
   self.rows = {}
 end
 
 function Adapter:_restoreStaleForeground()
   local session = self.session
   if self:_ownsForeground() then
-    local owner = self.gameActive() and self.previousForegroundOwner or nil
+    local owner = self.gameActive() and
+      (self.staleForegroundOwner or self.previousForegroundOwner) or nil
     self.mobileUi.setForeground('gameplay', owner)
     local state, restoredOwner = self:_foreground()
     if self.gameActive() and state == 'gameplay' and
@@ -512,7 +712,9 @@ function Adapter:_restoreStaleForeground()
   end
   if self.session == session then
     self.previousForegroundOwner = nil
+    self.staleForegroundOwner = nil
     self.previousHotbarPage = nil
+    self.openedGameSession = nil
   end
 end
 
@@ -520,9 +722,13 @@ function Adapter:_supersede(session)
   if not self.open or self.session ~= session then
     return
   end
+  local openedGameSession = self.openedGameSession
+  self.staleForegroundOwner = self.previousForegroundOwner
   self.open = false
-  self.session = self.session + 1
   self:_cleanupUi()
+  self:_restoreHotbar(session, openedGameSession)
+  self:_clearSessionSnapshot(session)
+  self.session = self.session + 1
 end
 
 function Adapter:openChat()
@@ -543,7 +749,9 @@ function Adapter:openChat()
   self.open = true
   self.closing = false
   self.previousForegroundOwner = owner
+  self.staleForegroundOwner = nil
   self.previousHotbarPage = validHotbarPage(self.getHotbarPage())
+  self.openedGameSession = self.gameSession
   self.keyboardDismissed = false
   self.cancelGestures()
   self.hideControls()
@@ -555,11 +763,14 @@ function Adapter:openChat()
       not self.open or self.session ~= session then
     self.open = false
     self:_cleanupUi()
+    self:_restoreHotbar(session, self.openedGameSession)
     local currentState, currentOwner = self:_foreground()
     if currentState == 'gameplay' and currentOwner == owner and
         self.gameActive() then
       self.showControls()
     end
+    self:_clearSessionSnapshot(session)
+    self.session = session + 1
     return false
   end
 
@@ -569,12 +780,14 @@ function Adapter:openChat()
   if not ok then
     self:_cleanupUi()
     self.open = false
+    self:_restoreHotbar(session, self.openedGameSession)
     if self:_ownsForeground() and self.session == session then
       self.mobileUi.setForeground('gameplay', owner)
     end
     if self.session ~= session then
       return false
     end
+    self:_clearSessionSnapshot(session)
     self.session = session + 1
     if self.onError then
       self.onError(errorMessage)
@@ -595,11 +808,12 @@ function Adapter:close()
   end
   local session = self.session
   local previousOwner = self.previousForegroundOwner
-  local previousPage = self.previousHotbarPage
+  local openedGameSession = self.openedGameSession
   local ownsForeground = self:_ownsForeground()
   self.closing = true
   self.open = false
   self:_cleanupUi()
+  self:_restoreHotbar(session, openedGameSession)
 
   if ownsForeground and self.session == session then
     self.mobileUi.setForeground('gameplay', previousOwner)
@@ -612,15 +826,11 @@ function Adapter:close()
   local restored = ownsForeground and self.session == session and
     state == 'gameplay' and owner == previousOwner and self.gameActive()
   if restored then
-    if previousPage then
-      self.setHotbarPage(previousPage)
-    end
     self.showControls()
     self.focusMap()
   end
 
-  self.previousForegroundOwner = nil
-  self.previousHotbarPage = nil
+  self:_clearSessionSnapshot(session)
   self.closing = false
   self.session = session + 1
   return restored
@@ -639,6 +849,7 @@ function Adapter:toggle()
 end
 
 function Adapter:onGameEnd()
+  self.gameSession = self.gameSession + 1
   self.open = false
   self.session = self.session + 1
   self:_cleanupUi()
@@ -646,7 +857,9 @@ function Adapter:onGameEnd()
     self.mobileUi.setForeground('gameplay', nil)
   end
   self.previousForegroundOwner = nil
+  self.staleForegroundOwner = nil
   self.previousHotbarPage = nil
+  self.openedGameSession = nil
 end
 
 function Adapter:terminate()
@@ -680,6 +893,11 @@ function MobileChat.create(options)
         gameInterface.getMapPanel()
       if map then map:focus() end
     end,
+    hideKeyboard = options.hideKeyboard or function()
+      if g_window and g_window.hideVirtualKeyboard then
+        g_window.hideVirtualKeyboard()
+      end
+    end,
     onError = options.onError or function() end,
     maxVisibleRows = MAX_VISIBLE_ROWS,
     maxSentHistory = MAX_SENT_HISTORY,
@@ -687,6 +905,7 @@ function MobileChat.create(options)
     historyIndex = 0,
     rows = {},
     session = 0,
+    gameSession = 1,
     open = false,
     terminated = false
   }, Adapter)
