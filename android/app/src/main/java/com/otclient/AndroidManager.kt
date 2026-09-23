@@ -119,6 +119,14 @@ class AndroidManager(
         }
     }
 
+    fun handleSystemBack() {
+        if (isImeVisible) {
+            hideSoftKeyboard()
+            return
+        }
+        nativeOnSystemBack()
+    }
+
     fun getDisplayDensity(): Float = context.resources.displayMetrics.density
 
     fun getClipboardText(): String {
@@ -139,6 +147,7 @@ class AndroidManager(
 
     external fun nativeInit()
     external fun nativeSetAudioEnabled(enabled: Boolean)
+    external fun nativeOnSystemBack()
     external fun nativeSetViewportMetrics(
         safeLeft: Int,
         safeTop: Int,

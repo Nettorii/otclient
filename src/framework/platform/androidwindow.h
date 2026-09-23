@@ -36,8 +36,9 @@ class AndroidWindow : public PlatformWindow
 {
     enum KeyCode {
         KEY_UNDEFINED,
-        KEY_BACKSPACE = 66,
-        KEY_ENTER = 67
+        KEY_BACKSPACE,
+        KEY_ENTER,
+        KEY_ESCAPE
     };
 
     enum EventType {
@@ -134,6 +135,7 @@ public:
     void nativeCommitText(jstring);
     void onNativeKeyDown(int);
     void onNativeKeyUp(int);
+    void dispatchSystemBack();
 protected:
     int internalLoadMouseCursor(const ImagePtr& image, const Point& hotSpot);
     void onDisplayDensityChanged(float newDensity) override;
@@ -150,6 +152,7 @@ private:
 
     ticks_t m_lastPress = 0;
     bool m_isDragging = false;
+    bool m_suppressBackUntilUp = false;
 
     float m_baseDisplayDensity{ DEFAULT_DISPLAY_DENSITY };
     bool m_hasBaseDisplayDensity{ false };

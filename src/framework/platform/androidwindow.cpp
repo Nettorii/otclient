@@ -27,6 +27,7 @@
 #include <game-activity/native_app_glue/android_native_app_glue.h>
 #include "framework/core/clock.h"
 #include <framework/core/eventdispatcher.h>
+#include <android/keycodes.h>
 #include <android/log.h>
 #define ALOGD(...) __android_log_print(ANDROID_LOG_DEBUG, "OTClientMobile", __VA_ARGS__)
 
@@ -38,6 +39,7 @@ AndroidWindow::AndroidWindow() {
 
     m_keyMap[AndroidWindow::KEY_ENTER] = Fw::KeyEnter;
     m_keyMap[AndroidWindow::KEY_BACKSPACE] = Fw::KeyBackspace;
+    m_keyMap[AndroidWindow::KEY_ESCAPE] = Fw::KeyEscape;
 }
 
 AndroidWindow::~AndroidWindow() {
@@ -46,10 +48,12 @@ AndroidWindow::~AndroidWindow() {
 
 AndroidWindow::KeyCode AndroidWindow::NativeEvent::getKeyCodeFromInt(int keyCode) {
     switch (keyCode) {
-        case 66:
+        case AKEYCODE_ENTER:
             return KEY_ENTER;
-        case 67:
+        case AKEYCODE_DEL:
             return KEY_BACKSPACE;
+        case AKEYCODE_BACK:
+            return KEY_ESCAPE;
         default:
             return KEY_UNDEFINED;
     }
@@ -429,6 +433,11 @@ void AndroidWindow::onNativeKeyUp( int keyCode ) {
     m_events.push(NativeEvent(KEY_UP, key));
 }
 
+void AndroidWindow::dispatchSystemBack() {
+    onNativeKeyDown(AKEYCODE_BACK);
+    onNativeKeyUp(AKEYCODE_BACK);
+}
+
 void AndroidWindow::nativeCommitText(jstring jString) {
     std::string text = g_androidManager.getStringFromJString(jString);
     m_events.push(NativeEvent(TEXTINPUT, text));
@@ -564,6 +573,32 @@ void AndroidWindow::processNativeInputEvents() {
             }
         }
         android_app_clear_motion_events(inputBuffer);
+    }
+
+    if (inputBuffer->keyEventsCount != 0) {
+        for (uint64_t i = 0; i < inputBuffer->keyEventsCount; ++i) {
+            const auto& keyEvent = inputBuffer->keyEvents[i];
+            const bool isBack = keyEvent.keyCode == AKEYCODE_BACK;
+
+            if (isBack && keyEvent.action == AKEY_EVENT_ACTION_DOWN &&
+                getKeyboardHeight() > 0) {
+                m_suppressBackUntilUp = true;
+                g_androidManager.hideKeyboard();
+            }
+            if (isBack && m_suppressBackUntilUp) {
+                if (keyEvent.action == AKEY_EVENT_ACTION_UP) {
+                    m_suppressBackUntilUp = false;
+                }
+                continue;
+            }
+
+            if (keyEvent.action == AKEY_EVENT_ACTION_DOWN) {
+                onNativeKeyDown(keyEvent.keyCode);
+            } else if (keyEvent.action == AKEY_EVENT_ACTION_UP) {
+                onNativeKeyUp(keyEvent.keyCode);
+            }
+        }
+        android_app_clear_key_events(inputBuffer);
     }
 }
 

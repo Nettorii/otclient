@@ -264,56 +264,184 @@ void BrowserWindow::poll() {
             });
         }, this);
         MAIN_THREAD_ASYNC_EM_ASM({
-            if (navigator && "virtualKeyboard" in navigator && (/iphone|ipod|ipad|android/i).test(navigator.userAgent)) {
+            if (typeof navigator !== "undefined" &&
+                "virtualKeyboard" in navigator &&
+                (/iphone|ipod|ipad|android/i).test(navigator.userAgent)) {
                 navigator.virtualKeyboard.overlaysContent = true;
-                const textInput = document.getElementById("title-text");
-                const DOM_VK_BACK_SPACE = 8;
-                const DOM_VK_RETURN = 13;
-                const DOM_ANDROID_CODE = 229; //https://stackoverflow.com/questions/36753548/keycode-on-android-is-always-229
-                textInput.addEventListener("input", function(ev) {
-                    textInput.innerHTML = "";
-                    ev.preventDefault();
-                    ev.stopPropagation();
-                });
-                textInput.addEventListener("keydown", function(ev) {
-                    if (ev.which === DOM_VK_BACK_SPACE) {
-                        const options = {
-                            code: 'Backspace',
-                            key : 'Backspace',
-                            keyCode : DOM_VK_BACK_SPACE,
-                            which : DOM_VK_BACK_SPACE
-                        };
-                        window.dispatchEvent(new KeyboardEvent('keydown', options));
-                        window.dispatchEvent(new KeyboardEvent('keyup', options));
-                        ev.preventDefault();
-                        ev.stopPropagation();
-                    }
-                    if (ev.which === DOM_VK_RETURN) {
-                        const options = {
-                            charCode: DOM_VK_RETURN,
-                            code : 'Enter',
-                            key : 'Enter',
-                            keyCode : DOM_VK_RETURN,
-                            which : DOM_VK_RETURN
-                        };
-                        window.dispatchEvent(new KeyboardEvent('keydown', options));
-                        window.dispatchEvent(new KeyboardEvent('keypress', options));
-                        window.dispatchEvent(new KeyboardEvent('keyup', options));
-                        ev.preventDefault();
-                        ev.stopPropagation();
-                    }
-                    if (ev.which === DOM_ANDROID_CODE) {
-                        ev.preventDefault();
-                        ev.stopPropagation();
-                    }
-                });
-                textInput.addEventListener("keyup", function(ev) {
-                    if (ev.which === DOM_VK_BACK_SPACE || ev.which === DOM_VK_RETURN || ev.which === DOM_ANDROID_CODE) {
-                        ev.preventDefault();
-                        ev.stopPropagation();
-                    }
-                });
             }
+
+            // OTCLIENT_BROWSER_TEXT_INPUT_FALLBACK_BEGIN
+            (function() {
+            if (window.OTClientTextInputBridge &&
+                window.OTClientTextInputBridge.installed) {
+                return;
+            }
+
+            const textInput = document.getElementById("title-text");
+            if (!textInput) {
+                return;
+            }
+
+            let composition = [];
+            let lastPhysicalText = 0;
+            let lastPaste = { text: "", time: 0 };
+            let lastNativeSpecial = { key: "", time: 0 };
+            const codePoints = (value) => Array.from(value || "");
+            const commonPrefix = (left, right) => {
+                let index = 0;
+                while (index < left.length && index < right.length &&
+                       left[index] === right[index]) {
+                    index++;
+                }
+                return index;
+            };
+            const dispatchSpecial = (key, keyCode) => {
+                const options = {
+                    code: key,
+                    key: key,
+                    keyCode: keyCode,
+                    which: keyCode,
+                    bubbles: true
+                };
+                window.dispatchEvent(new KeyboardEvent("keydown", options));
+                window.dispatchEvent(new KeyboardEvent("keyup", options));
+            };
+            const dispatchText = (value) => {
+                for (const character of codePoints(value)) {
+                    window.dispatchEvent(new KeyboardEvent("keypress", {
+                        key: character,
+                        charCode: character.codePointAt(0),
+                        bubbles: true
+                    }));
+                }
+            };
+            const nativeSpecialWasRecent = (key) =>
+                lastNativeSpecial.key === key &&
+                Date.now() - lastNativeSpecial.time < 80;
+
+            textInput.addEventListener("beforeinput", (event) => {
+                const inputType = event.inputType || "";
+                if (inputType === "insertText" ||
+                    inputType === "insertCompositionText" ||
+                    inputType === "insertFromPaste") {
+                    const value = event.data || "";
+                    if (inputType === "insertFromPaste" &&
+                        Date.now() - lastPaste.time < 80 &&
+                        (!value || value === lastPaste.text)) {
+                        lastPaste = { text: "", time: 0 };
+                        event.preventDefault();
+                        return;
+                    }
+                    if (inputType === "insertText" &&
+                        Date.now() - lastPhysicalText < 40) {
+                        composition = [];
+                        return;
+                    }
+
+                    if (inputType === "insertCompositionText") {
+                        const nextComposition = codePoints(value);
+                        const keep = commonPrefix(composition, nextComposition);
+                        for (let index = composition.length; index > keep; --index) {
+                            dispatchSpecial("Backspace", 8);
+                        }
+                        dispatchText(nextComposition.slice(keep).join(""));
+                        composition = nextComposition;
+                    } else {
+                        composition = [];
+                        dispatchText(value);
+                    }
+                    event.preventDefault();
+                } else if (inputType === "insertParagraph" ||
+                           inputType === "insertLineBreak") {
+                    if (!nativeSpecialWasRecent("Enter")) {
+                        dispatchSpecial("Enter", 13);
+                    }
+                    composition = [];
+                    event.preventDefault();
+                } else if (inputType === "deleteContentBackward") {
+                    if (composition.length > 0) {
+                        composition.pop();
+                        dispatchSpecial("Backspace", 8);
+                    } else if (!nativeSpecialWasRecent("Backspace")) {
+                        dispatchSpecial("Backspace", 8);
+                    }
+                    event.preventDefault();
+                } else if (inputType === "deleteContentForward") {
+                    if (!nativeSpecialWasRecent("Delete")) {
+                        dispatchSpecial("Delete", 46);
+                    }
+                    event.preventDefault();
+                }
+            });
+            textInput.addEventListener("paste", (event) => {
+                if (document.activeElement !== textInput) {
+                    return;
+                }
+                const value = event.clipboardData &&
+                    event.clipboardData.getData("text/plain");
+                if (value) {
+                    composition = [];
+                    lastPaste = { text: value, time: Date.now() };
+                    // The document-level paste bridge above inserts clipboard
+                    // text into the active edit. Only remember this DOM event
+                    // here so its following beforeinput is not inserted twice.
+                    event.preventDefault();
+                }
+            });
+            textInput.addEventListener("input", () => {
+                textInput.textContent = "";
+            });
+            textInput.addEventListener("compositionend", () => {
+                composition = [];
+            });
+            window.addEventListener("keydown", (event) => {
+                if (!event.isTrusted) {
+                    return;
+                }
+                if (event.key && codePoints(event.key).length === 1 &&
+                    !event.ctrlKey && !event.metaKey && !event.altKey) {
+                    lastPhysicalText = Date.now();
+                    // The native window keydown callback intentionally
+                    // prevents the browser's keypress default. Recreate that
+                    // text event once for standard shells without a bridge.
+                    dispatchText(event.key);
+                } else if (event.key === "Enter" ||
+                           event.key === "Backspace" ||
+                           event.key === "Delete") {
+                    lastNativeSpecial = {
+                        key: event.key,
+                        time: Date.now()
+                    };
+                }
+            }, true);
+            window.OTClientTextInputBridge = {
+                installed: true,
+                source: "browser-fallback",
+                show: () => {
+                    textInput.focus();
+                    if (typeof navigator !== "undefined" &&
+                        navigator.virtualKeyboard &&
+                        navigator.virtualKeyboard.show) {
+                        try {
+                            navigator.virtualKeyboard.show();
+                        } catch (_) {
+                        }
+                    }
+                },
+                hide: () => {
+                    textInput.blur();
+                    if (typeof navigator !== "undefined" &&
+                        navigator.virtualKeyboard &&
+                        navigator.virtualKeyboard.hide) {
+                        try {
+                            navigator.virtualKeyboard.hide();
+                        } catch (_) {
+                        }
+                    }
+                }
+            };
+            })();
+            // OTCLIENT_BROWSER_TEXT_INPUT_FALLBACK_END
         });
         // clang-format on
 
@@ -569,7 +697,10 @@ void BrowserWindow::hideVirtualKeyboard() {
         if (typeof navigator !== "undefined" &&
             "virtualKeyboard" in navigator &&
             navigator.virtualKeyboard.hide) {
-            navigator.virtualKeyboard.hide();
+            try {
+                navigator.virtualKeyboard.hide();
+            } catch (_) {
+            }
         }
     });
 }

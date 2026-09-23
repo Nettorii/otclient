@@ -87,6 +87,15 @@ class MainActivity : GameActivity() {
         super.onPause()
     }
 
+    @Deprecated("Android system Back is forwarded to the game")
+    override fun onBackPressed() {
+        if (::androidManager.isInitialized) {
+            androidManager.handleSystemBack()
+        } else {
+            super.onBackPressed()
+        }
+    }
+
     override fun onDestroy() {
         androidManager.nativeSetAudioEnabled(false)
         super.onDestroy()

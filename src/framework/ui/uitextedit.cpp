@@ -1660,9 +1660,22 @@ bool UITextEdit::onMousePress(const Point& mousePos, const Fw::MouseButton butto
 #ifdef __EMSCRIPTEN__
         if (g_window.isVisible()) {
             MAIN_THREAD_ASYNC_EM_ASM({
-                if (navigator && "virtualKeyboard" in navigator) {
-                    document.getElementById("title-text").focus();
-                    navigator.virtualKeyboard.show();
+                const bridge = window.OTClientTextInputBridge;
+                if (bridge && typeof bridge.show === "function") {
+                    bridge.show();
+                } else {
+                    const titleText = document.getElementById("title-text");
+                    if (titleText) {
+                        titleText.focus();
+                    }
+                    if (typeof navigator !== "undefined" &&
+                        navigator.virtualKeyboard &&
+                        navigator.virtualKeyboard.show) {
+                        try {
+                            navigator.virtualKeyboard.show();
+                        } catch (_) {
+                        }
+                    }
                 }
             });
         }
