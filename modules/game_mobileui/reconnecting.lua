@@ -148,14 +148,37 @@ function Adapter:_applyProfile(profile)
   if not geometry then
     return false
   end
-  self.surface:setRect(geometry)
+  self.surface:setWidth(geometry.width)
+  self.surface:setHeight(geometry.height)
+  self.surface:setX(geometry.x)
+  self.surface:setY(geometry.y)
+  local buttonWidth = math.max(48, math.floor((geometry.width - 32) / 2))
+  self.retry:setWidth(buttonWidth)
+  self.logout:setWidth(buttonWidth)
   if self.mobileUi.applyOverlayTree then
     self.mobileUi.applyOverlayTree(self.backdrop, profile)
   end
   return true
 end
 
+function Adapter:_scheduleLayout()
+  removeEvent(self.layoutEvent)
+  local generation = self.generation
+  self.layoutEvent = addEvent(function()
+    self.layoutEvent = nil
+    if not self.active or self.terminated or
+        self.generation ~= generation then
+      return
+    end
+    if not self:_applyProfile(self.mobileUi.getProfile()) then
+      self.logError('reconnect profile cannot fit')
+    end
+  end)
+end
+
 function Adapter:_destroyUi()
+  removeEvent(self.layoutEvent)
+  self.layoutEvent = nil
   if self.unsubscribeProfile then
     self.unsubscribeProfile()
     self.unsubscribeProfile = nil
@@ -301,15 +324,13 @@ function Adapter:_present()
       widget:show()
     end
   end
-  if self.surface and not self.surface:isDestroyed() then
-    self.surface:raise()
-  end
   self.backdrop:raise()
   self.backdrop:focus()
   if self.backdrop.grabKeyboard then
     self.backdrop:grabKeyboard()
   end
   self:_setButtonsEnabled()
+  self:_scheduleLayout()
   return true
 end
 

@@ -64,7 +64,6 @@ MobileReconnectBackdrop < MobileOverlayPanel
       layout:
         type: horizontalBox
         spacing: 8
-        fit-children: true
 
       MobileReconnectButton
         id: reconnectRetry
