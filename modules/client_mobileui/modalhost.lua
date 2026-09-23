@@ -571,3 +571,11 @@ function terminateModalHost()
   uninstallKeyboardReceiverTracker()
   terminating = false
 end
+
+function supersedeModal()
+  if not activeModal or not activeModal:isOpen() then
+    return false
+  end
+  activeModal:replace()
+  return true
+end

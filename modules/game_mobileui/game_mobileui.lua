@@ -10,16 +10,23 @@ local actionAdapter
 local hotbarAdapter
 local chatAdapter
 local drawerHost
+local reconnectAdapter
 local placeholderUnregisters = {}
 local drawerViewUnregisters = {}
 local unregisterChatHandler
 local unsubscribeProfile
+local unsubscribePortrait
 local layoutEvent
 local windowCallbacks
 local gameActive = false
 local controlsFit = false
 local controlsSuppressed = false
+local initialized = false
+local terminating = false
+local lastProfileKey
+local fallbackModal
 local foregroundOwner = {}
+local initializeGameplay
 
 local function nonNegative(value)
   return math.max(0, tonumber(value) or 0)
@@ -254,6 +261,29 @@ local function cancelOwnedGestures()
   end
 end
 
+function cancelInput()
+  cancelOwnedGestures()
+end
+
+local function profileKey(profile)
+  profile = profile or {}
+  local safe = profile.safe or {}
+  return table.concat({
+    tostring(profile.class),
+    tostring(profile.controlClass),
+    tostring(profile.controlPreset),
+    tostring(profile.usableWidth),
+    tostring(profile.usableHeight),
+    tostring(safe.left),
+    tostring(safe.top),
+    tostring(safe.right),
+    tostring(safe.bottom),
+    tostring(profile.keyboardHeight),
+    tostring(profile.handedness),
+    tostring(profile.overlayOpacity)
+  }, '|')
+end
+
 local function configureInputTarget(widget)
   widget.onMousePress = function(_, _, mouseButton)
     return mouseButton == (MouseLeftButton or 1) or
@@ -339,11 +369,27 @@ local function applyComputedLayout(layout)
   synchronizeInputTargets()
 end
 
-function applyProfile(profile)
+function applyProfile(profile, immediate)
   if not hud or hud:isDestroyed() then
     return false
   end
 
+  local mobileUi = modules.client_mobileui
+  if mobileUi.isPortraitProfile(profile) or
+      mobileUi.isPortraitGateActive() then
+    cancelOwnedGestures()
+    removeEvent(layoutEvent)
+    layoutEvent = nil
+    controlsSuppressed = true
+    setControlsVisible(false)
+    return false
+  end
+
+  local nextProfileKey = profileKey(profile)
+  if nextProfileKey == lastProfileKey then
+    return true
+  end
+  lastProfileKey = nextProfileKey
   cancelOwnedGestures()
   if hotbarAdapter then
     hotbarAdapter:applyProfile(profile)
@@ -351,10 +397,15 @@ function applyProfile(profile)
   applyOverlayProfile(profile)
   local layout = computeLayout(profile)
   removeEvent(layoutEvent)
-  layoutEvent = addEvent(function()
-    layoutEvent = nil
+  layoutEvent = nil
+  if immediate then
     applyComputedLayout(layout)
-  end)
+  else
+    layoutEvent = addEvent(function()
+      layoutEvent = nil
+      applyComputedLayout(layout)
+    end)
+  end
   return true
 end
 
@@ -464,6 +515,9 @@ end
 
 local function onGameStart()
   cancelOwnedGestures()
+  if reconnectAdapter then
+    reconnectAdapter:onGameStart()
+  end
   if gameActive then
     setControlsVisible(true)
     return
@@ -583,6 +637,76 @@ function getOpenDrawerId()
   return drawerHost and drawerHost:getOpenId() or nil
 end
 
+function showReconnecting(reason)
+  if not reconnectAdapter then
+    return false
+  end
+  cancelOwnedGestures()
+  if reconnectAdapter:isOpen() then
+    return reconnectAdapter:updateReason(reason)
+  end
+  return reconnectAdapter:show(reason)
+end
+
+function closeReconnecting()
+  return reconnectAdapter and reconnectAdapter:close() or false
+end
+
+function isReconnecting()
+  return reconnectAdapter and reconnectAdapter:isOpen() or false
+end
+
+local function profileDescription(profile)
+  profile = profile or {}
+  return string.format('%s/%sx%s',
+    tostring(profile.controlClass or profile.class or 'compact'),
+    tostring(profile.usableWidth or 0),
+    tostring(profile.usableHeight or 0))
+end
+
+local function showViewCreationFallback(viewId, errorMessage, profile)
+  local mobileUi = modules.client_mobileui
+  g_logger.error('[game_mobileui] view creation failed module=game_mobileui view=' ..
+    tostring(viewId) .. ' profile=' .. profileDescription(profile) .. ': ' ..
+    tostring(errorMessage))
+
+  if fallbackModal and fallbackModal:isOpen() then
+    fallbackModal:close()
+  end
+
+  local body = g_ui.createWidget('Panel')
+  body:setHeight(96)
+  local label = g_ui.createWidget('Label', body)
+  label:setText(tr('This view could not be opened. Please try again.'))
+  label:setColor('#dbe6ee')
+  label:setTextAlign(AlignCenter)
+  label:setTextWrap(true)
+  label:setRect({ x = 8, y = 8, width = 520, height = 80 })
+  label:setPhantom(true)
+
+  local handle
+  handle = mobileUi.showModal({
+    title = tr('Unable to open'),
+    body = body,
+    buttons = {
+      {
+        text = tr('Close'),
+        callback = function()
+          if handle then
+            handle:close()
+          end
+        end
+      }
+    },
+    onClose = function()
+      if fallbackModal == handle then
+        fallbackModal = nil
+      end
+    end
+  })
+  fallbackModal = handle:isOpen() and handle or nil
+end
+
 local function registerPlaceholderDrawerViews()
   local views = {
     { id = 'inventory', title = 'Inventory' },
@@ -650,6 +774,7 @@ end
 
 function runSelfTests()
   MobileDrawer.runSelfTests()
+  MobileReconnecting.runSelfTests()
 
   local function insideUsable(geometry, profile)
     local left = profile.safe.left
@@ -802,22 +927,13 @@ function runSelfTests()
   g_logger.info('[mobile-ui-test] gameplay-layout PASS')
 end
 
-function init()
+initializeGameplay = function(initialProfile, atomicProfile)
   local mobileUi = modules.client_mobileui
-  if not g_platform.isMobile() or not mobileUi.isV2Enabled() then
-    return
+  if initialized or terminating or
+      mobileUi.isPortraitProfile(initialProfile or mobileUi.getProfile()) then
+    return false
   end
 
-  g_ui.importStyle('styles.otui')
-  g_ui.importStyle('drawer.otui')
-  g_ui.importStyle('chat.otui')
-  g_ui.importStyle('views/inventory.otui')
-  g_ui.importStyle('views/container.otui')
-  g_ui.importStyle('views/character.otui')
-  g_ui.importStyle('views/minimap.otui')
-  g_ui.importStyle('views/battle.otui')
-  g_ui.importStyle('views/vip.otui')
-  g_ui.importStyle('views/settings.otui')
   hud = g_ui.displayUI('game_mobileui')
   status = hud:getChildById('status')
   menu = hud:getChildById('menu')
@@ -874,7 +990,8 @@ function init()
     registerActionHandler = function(handler)
       return actionAdapter:registerDrawerHandler(handler)
     end,
-    onAvailabilityChange = synchronizeInputTargets
+    onAvailabilityChange = synchronizeInputTargets,
+    onViewCreateError = showViewCreationFallback
   })
   configureDrawerHandle(drawerHandle)
   registerPlaceholderDrawerViews()
@@ -907,7 +1024,8 @@ function init()
   controlsFit = false
   hud.controlsFit = false
   setControlsVisible(false)
-  applyProfile(mobileUi.getProfile())
+  initialized = true
+  applyProfile(initialProfile or mobileUi.getProfile(), atomicProfile)
   unsubscribeProfile = mobileUi.subscribeProfile(applyProfile)
   connect(g_game, {
     onGameStart = onGameStart,
@@ -927,10 +1045,96 @@ function init()
   if g_game.isOnline() then
     onGameStart()
   end
+  return true
+end
+
+local function suspendForPortrait()
+  cancelOwnedGestures()
+  removeEvent(layoutEvent)
+  layoutEvent = nil
+  lastProfileKey = nil
+  controlsSuppressed = true
+  if hud and not hud:isDestroyed() then
+    setControlsVisible(false)
+  end
+end
+
+local function onPortraitGate(blocked, profile)
+  if blocked then
+    suspendForPortrait()
+    return
+  end
+  if not initialized then
+    initializeGameplay(profile, true)
+    return
+  end
+  controlsSuppressed = false
+  applyProfile(profile, true)
+  if gameActive then
+    acquireGameplayForeground()
+    setControlsVisible(true)
+    raiseGameplayHud()
+  end
+end
+
+function init()
+  local mobileUi = modules.client_mobileui
+  if not g_platform.isMobile() or not mobileUi.isV2Enabled() then
+    return
+  end
+
+  g_ui.importStyle('styles.otui')
+  g_ui.importStyle('drawer.otui')
+  g_ui.importStyle('chat.otui')
+  g_ui.importStyle('reconnecting.otui')
+  g_ui.importStyle('views/inventory.otui')
+  g_ui.importStyle('views/container.otui')
+  g_ui.importStyle('views/character.otui')
+  g_ui.importStyle('views/minimap.otui')
+  g_ui.importStyle('views/battle.otui')
+  g_ui.importStyle('views/vip.otui')
+  g_ui.importStyle('views/settings.otui')
+
+  reconnectAdapter = MobileReconnecting.create({
+    cancelGestures = cancelOwnedGestures,
+    onRetry = function()
+      return CharacterList and CharacterList.retryCurrentCharacter and
+        CharacterList.retryCurrentCharacter() or false
+    end,
+    onLogout = function()
+      return CharacterList and CharacterList.cancelReconnect and
+        CharacterList.cancelReconnect() or false
+    end
+  })
+  unsubscribePortrait = mobileUi.subscribePortraitGate(onPortraitGate)
+  local profile = mobileUi.getProfile()
+  if mobileUi.isPortraitGateActive() or mobileUi.isPortraitProfile(profile) then
+    suspendForPortrait()
+    return
+  end
+  initializeGameplay(profile)
 end
 
 function terminate()
+  if terminating then
+    return
+  end
+  terminating = true
+  if unsubscribePortrait then
+    unsubscribePortrait()
+    unsubscribePortrait = nil
+  end
+  if reconnectAdapter then
+    reconnectAdapter:terminate()
+    reconnectAdapter = nil
+  end
+  if fallbackModal and fallbackModal:isOpen() then
+    fallbackModal:close()
+  end
+  fallbackModal = nil
   if not hud then
+    initialized = false
+    terminating = false
     return
   end
 
@@ -987,4 +1191,7 @@ function terminate()
   gameActive = false
   controlsFit = false
   controlsSuppressed = false
+  initialized = false
+  lastProfileKey = nil
+  terminating = false
 end

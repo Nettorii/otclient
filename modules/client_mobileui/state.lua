@@ -72,7 +72,7 @@ function runStateSelfTests()
     'superseded outer owner must not gain foreground')
 
   for _, acceptedState in ipairs({
-    'gameplay', 'drawer', 'chat', 'modal', 'reconnecting'
+    'gameplay', 'drawer', 'chat', 'modal', 'portrait', 'reconnecting'
   }) do
     assert(controller.set(acceptedState, nil),
       acceptedState .. ' state must be accepted')
@@ -84,6 +84,7 @@ local VALID_STATES = {
   drawer = true,
   chat = true,
   modal = true,
+  portrait = true,
   reconnecting = true
 }
 

@@ -19,6 +19,9 @@ local premiumButton
 local suppressCheckCallbacks = false
 local characterTouchScroller
 local activeMobileLayout = false
+local enteredWorld = false
+local reconnectActive = false
+local reconnectAttempt = false
 
 local function mobileUiModule()
     return modules and modules.client_mobileui
@@ -27,6 +30,10 @@ end
 local function isMobileV2()
     local mobileUi = mobileUiModule()
     return mobileUi and mobileUi.isV2Enabled and mobileUi.isV2Enabled() or false
+end
+
+local function mobileGameplayModule()
+    return modules and modules.game_mobileui
 end
 
 local function windowChild(id)
@@ -603,8 +610,42 @@ local function onLoginWait(message, time)
     resendWaitEvent = scheduleEvent(resendWait, time * 1000)
 end
 
+local function showReconnectState(message)
+    if not isMobileV2() or not (enteredWorld or reconnectActive) then
+        return false
+    end
+    local mobileGameplay = mobileGameplayModule()
+    if not mobileGameplay or
+            type(mobileGameplay.showReconnecting) ~= 'function' then
+        return false
+    end
+
+    local wasReconnectActive = reconnectActive
+    removeAutoReconnectEvent()
+    CharacterList.destroyLoadBox()
+    local shown = mobileGameplay.showReconnecting(message) == true
+    reconnectActive = shown or wasReconnectActive
+    if shown then
+        reconnectAttempt = false
+    end
+    return shown
+end
+
+local function sessionEndText(reason)
+    if type(reason) == 'string' and reason ~= '' then
+        return tr(reason)
+    end
+    if reason ~= nil then
+        return tr('Your session has ended. Reason: %s', tostring(reason))
+    end
+    return tr('Your session has ended.')
+end
+
 function onGameLoginError(message)
     CharacterList.destroyLoadBox()
+    if showReconnectState(message) then
+        return
+    end
     errorBox = displayErrorBox(tr('Login Error'), message)
     errorBox.onOk = function()
         errorBox = nil
@@ -614,6 +655,9 @@ end
 
 function onGameSessionEnd(reason)
     CharacterList.destroyLoadBox()
+    if showReconnectState(sessionEndText(reason)) then
+        return
+    end
     CharacterList.showAgain()
 end
 
@@ -621,11 +665,39 @@ function onGameConnectionError(message, code)
     CharacterList.destroyLoadBox()
     local text = translateNetworkError(code, g_game.getProtocolGame() and g_game.getProtocolGame():isConnecting(),
                                        message)
+    if showReconnectState(text) then
+        return
+    end
     errorBox = displayErrorBox(tr('Connection Error'), text)
     errorBox.onOk = function()
         errorBox = nil
         CharacterList.showAgain()
     end
+end
+
+local function onMobileGameStart()
+    enteredWorld = true
+    reconnectActive = false
+    reconnectAttempt = false
+    local mobileGameplay = mobileGameplayModule()
+    if mobileGameplay and mobileGameplay.closeReconnecting then
+        mobileGameplay.closeReconnecting()
+    end
+    CharacterList.destroyLoadBox()
+end
+
+local function onMobileGameEnd()
+    enteredWorld = false
+    reconnectAttempt = false
+    if reconnectActive then
+        CharacterList.destroyLoadBox()
+        return
+    end
+    local mobileGameplay = mobileGameplayModule()
+    if mobileGameplay and mobileGameplay.closeReconnecting then
+        mobileGameplay.closeReconnecting()
+    end
+    CharacterList.showAgain()
 end
 
 function onGameUpdateNeeded(signature)
@@ -704,6 +776,9 @@ end
 
 -- public functions
 function CharacterList.init()
+    enteredWorld = g_game.isOnline()
+    reconnectActive = false
+    reconnectAttempt = false
     connect(g_game, {
         onLoginError = onGameLoginError
     })
@@ -717,13 +792,13 @@ function CharacterList.init()
         onConnectionError = onGameConnectionError
     })
     connect(g_game, {
-        onGameStart = CharacterList.destroyLoadBox
+        onGameStart = onMobileGameStart
     })
     connect(g_game, {
         onLoginWait = onLoginWait
     })
     connect(g_game, {
-        onGameEnd = CharacterList.showAgain
+        onGameEnd = onMobileGameEnd
     })
     connect(g_game, {
         onLogout = onLogout
@@ -748,13 +823,13 @@ function CharacterList.terminate()
         onConnectionError = onGameConnectionError
     })
     disconnect(g_game, {
-        onGameStart = CharacterList.destroyLoadBox
+        onGameStart = onMobileGameStart
     })
     disconnect(g_game, {
         onLoginWait = onLoginWait
     })
     disconnect(g_game, {
-        onGameEnd = CharacterList.showAgain
+        onGameEnd = onMobileGameEnd
     })
     disconnect(g_game, {
         onLogout = onLogout
@@ -793,6 +868,13 @@ function CharacterList.terminate()
     end
 
     removeAutoReconnectEvent()
+    local mobileGameplay = mobileGameplayModule()
+    if mobileGameplay and mobileGameplay.closeReconnecting then
+        mobileGameplay.closeReconnecting()
+    end
+    enteredWorld = false
+    reconnectActive = false
+    reconnectAttempt = false
     destroyCreateAccount()
 
     CharacterList = nil
@@ -1084,6 +1166,9 @@ function CharacterList.hide(showLogin)
 end
 
 function CharacterList.showAgain()
+    if reconnectActive then
+        return
+    end
     if characterList and characterList:hasChildren() then
         CharacterList.show()
         scheduleAutoReconnect()
@@ -1113,9 +1198,68 @@ function CharacterList.doLogin()
             loginEvent = nil
         end
         tryLogin(charInfo)
+        return true
     else
         displayErrorBox(tr('Error'), tr('You must select a character to login!'))
     end
+    return false
+end
+
+function CharacterList.retryCurrentCharacter()
+    if not reconnectActive or reconnectAttempt then
+        return false
+    end
+    reconnectAttempt = true
+    removeAutoReconnectEvent()
+    local started = CharacterList.doLogin()
+    if not started then
+        reconnectAttempt = false
+    end
+    return started
+end
+
+function CharacterList.cancelReconnect()
+    if not reconnectActive then
+        return false
+    end
+
+    reconnectActive = false
+    reconnectAttempt = false
+    removeAutoReconnectEvent()
+    if loginEvent then
+        removeEvent(loginEvent)
+        loginEvent = nil
+    end
+    if updateWaitEvent then
+        removeEvent(updateWaitEvent)
+        updateWaitEvent = nil
+    end
+    if resendWaitEvent then
+        removeEvent(resendWaitEvent)
+        resendWaitEvent = nil
+    end
+    if waitingWindow then
+        waitingWindow:destroy()
+        waitingWindow = nil
+    end
+    CharacterList.destroyLoadBox()
+    g_game.cancelLogin()
+
+    local mobileGameplay = mobileGameplayModule()
+    if mobileGameplay and mobileGameplay.closeReconnecting then
+        mobileGameplay.closeReconnecting()
+    end
+
+    if g_game.isOnline() then
+        g_game.safeLogout()
+        return true
+    end
+    if characterList and characterList:hasChildren() then
+        CharacterList.show()
+    elseif EnterGame then
+        EnterGame.show()
+    end
+    return true
 end
 
 function CharacterList.destroyLoadBox()
@@ -1239,7 +1383,8 @@ function onLogout()
 end
 
 function scheduleAutoReconnect()
-    if not g_settings.getBoolean('autoReconnect') or lastLogout + 2000 > g_clock.millis() then
+    if reconnectActive or not g_settings.getBoolean('autoReconnect') or
+            lastLogout + 2000 > g_clock.millis() then
         return
     end
 
@@ -1248,7 +1393,7 @@ function scheduleAutoReconnect()
 end
 
 function executeAutoReconnect()
-    if not g_settings.getBoolean('autoReconnect') then
+    if reconnectActive or not g_settings.getBoolean('autoReconnect') then
         return
     end
 

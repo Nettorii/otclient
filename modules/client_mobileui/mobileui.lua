@@ -54,13 +54,16 @@ end
 function init()
   g_ui.importStyle('mobileui.otui')
   g_ui.importStyle('modalhost.otui')
+  g_ui.importStyle('portrait.otui')
   initProfile()
   if isV2Enabled() then
     initModalHost()
+    initPortrait()
   end
 end
 
 function terminate()
+  terminatePortrait()
   terminateModalHost()
   terminateProfile()
 end

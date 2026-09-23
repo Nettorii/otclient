@@ -55,6 +55,16 @@ function runSelfTests()
   expectEqual(fullyOccluded.usableWidth, 0, 'usable width floor')
   expectEqual(fullyOccluded.usableHeight, 0, 'usable height floor')
 
+  -- Unknown metrics deliberately use zero insets and the compact fallback.
+  local unknown = computeProfile(nil, nil, nil, nil, nil, nil, nil)
+  expectEqual(unknown.class, 'compact', 'unknown metrics class')
+  expectEqual(unknown.controlClass, 'compact',
+    'unknown metrics control class')
+  expectEqual(unknown.safe.left, 0, 'unknown metrics left inset')
+  expectEqual(unknown.safe.top, 0, 'unknown metrics top inset')
+  expectEqual(unknown.safe.right, 0, 'unknown metrics right inset')
+  expectEqual(unknown.safe.bottom, 0, 'unknown metrics bottom inset')
+
   local metrics = { 800, 390, 0, 0, 0, 0, 0, 'standard' }
   local boundRefresh
   local unboundRefresh
@@ -122,6 +132,9 @@ function runSelfTests()
 
   if runStateSelfTests then
     runStateSelfTests()
+  end
+  if runPortraitSelfTests then
+    runPortraitSelfTests()
   end
   if runActivationSelfTests then
     runActivationSelfTests()
@@ -471,7 +484,14 @@ local profileService
 local function getWindowMetric(name)
   local getter = g_window[name]
   if not getter then return 0 end
-  return getter()
+  local ok, value = pcall(getter)
+  if not ok then
+    g_logger.warning(string.format(
+      '[client_mobileui] unavailable viewport metric %s: %s',
+      tostring(name), tostring(value)))
+    return 0
+  end
+  return value
 end
 
 local function readMobileOption(key, defaultValue, settingGetter)

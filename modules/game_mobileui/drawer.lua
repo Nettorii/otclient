@@ -794,6 +794,7 @@ function Host:_callRecord(record, callback, ...)
   record.callbackDepth = record.callbackDepth - 1
   self.callbackDepth = self.callbackDepth - 1
   if not ok then
+    record.lastError = result
     self.logError(result)
   end
   if record.cleanupRequested and record.callbackDepth == 0 and
@@ -1045,6 +1046,17 @@ function Host:open(id)
   local created, view = self:_callRecord(
     record, entry.descriptor.create, holder)
   if not created then
+    if self.onViewCreateError then
+      local reported, reportError = pcall(
+        self.onViewCreateError, entry.id, record.lastError, self.getProfile())
+      if not reported then
+        self.logError(reportError)
+      end
+    end
+    if self.pending ~= record or self.transition ~= transition then
+      self:_requestCleanup(record)
+      return false
+    end
     return self:_rollbackOpening(record, transition)
   end
   if not self:_openingIsCurrent(record, transition) then
@@ -1178,6 +1190,7 @@ function MobileDrawer.create(options)
     cancelGestures = options.cancelGestures or function() end,
     registerActionHandler = options.registerActionHandler,
     onAvailabilityChange = options.onAvailabilityChange,
+    onViewCreateError = options.onViewCreateError,
     logError = options.logError or defaultLogError,
     registry = {},
     viewCount = 0,

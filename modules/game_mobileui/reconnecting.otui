@@ -1,0 +1,75 @@
+MobileReconnectButton < MobileOverlayQtButton
+  height: 48
+  min-width: 48
+  min-height: 48
+  font: verdana-11px-antialised
+  mobile-overlay-base: #101c29
+
+MobileReconnectBackdrop < MobileOverlayPanel
+  id: reconnectBackdrop
+  anchors.fill: parent
+  background-color: #02060ae8
+  mobile-overlay-base: #02060a
+  focusable: true
+  phantom: false
+
+  MobileUISurface
+    id: reconnectSurface
+    background-color: #0b131eff
+    mobile-overlay-base: #0b131e
+    border-width: 1
+    border-color: #7891a477
+    clipping: true
+
+    Label
+      id: reconnectTitle
+      anchors.left: parent.left
+      anchors.right: parent.right
+      anchors.top: parent.top
+      margin-left: 16
+      margin-right: 16
+      margin-top: 24
+      height: 32
+      !text: tr('Reconnecting')
+      text-align: center
+      color: #e5edf4
+      font: verdana-11px-antialised
+      phantom: true
+
+    Label
+      id: reconnectReason
+      anchors.left: parent.left
+      anchors.right: parent.right
+      anchors.top: reconnectTitle.bottom
+      anchors.bottom: reconnectActions.top
+      margin-left: 18
+      margin-right: 18
+      margin-top: 10
+      margin-bottom: 12
+      text-align: center
+      text-wrap: true
+      color: #c8d5df
+      font: verdana-11px-antialised
+      phantom: true
+
+    Panel
+      id: reconnectActions
+      anchors.left: parent.left
+      anchors.right: parent.right
+      anchors.bottom: parent.bottom
+      margin-left: 12
+      margin-right: 12
+      margin-bottom: 12
+      height: 48
+      layout:
+        type: horizontalBox
+        spacing: 8
+        fit-children: true
+
+      MobileReconnectButton
+        id: reconnectRetry
+        !text: tr('Retry')
+
+      MobileReconnectButton
+        id: reconnectLogout
+        !text: tr('Log out')

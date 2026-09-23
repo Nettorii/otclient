@@ -1,0 +1,60 @@
+MobilePortraitGate < MobileOverlayPanel
+  id: mobilePortraitGate
+  anchors.fill: parent
+  background-color: #02060aff
+  mobile-overlay-base: #02060a
+  focusable: true
+  phantom: false
+
+  MobileUISurface
+    id: portraitGuidance
+    width: 280
+    height: 208
+    anchors.centerIn: parent
+    background-color: #0b131eff
+    mobile-overlay-base: #0b131e
+    border-width: 1
+    border-color: #7891a477
+    phantom: true
+
+    Label
+      id: portraitBrand
+      anchors.top: parent.top
+      anchors.horizontalCenter: parent.horizontalCenter
+      margin-top: 26
+      width: 240
+      height: 34
+      text: TIBIA
+      text-align: center
+      color: #d7b873
+      font: verdana-11px-antialised
+      phantom: true
+
+    Label
+      id: portraitRotateIcon
+      anchors.top: portraitBrand.bottom
+      anchors.horizontalCenter: parent.horizontalCenter
+      margin-top: 16
+      width: 72
+      height: 48
+      text: ROTATE
+      text-align: center
+      color: #e5edf4
+      font: verdana-11px-antialised
+      phantom: true
+
+    Label
+      id: portraitRotateGuidance
+      anchors.left: parent.left
+      anchors.right: parent.right
+      anchors.top: portraitRotateIcon.bottom
+      margin-left: 20
+      margin-right: 20
+      margin-top: 12
+      height: 48
+      !text: tr('Rotate your device to landscape to continue.')
+      text-align: center
+      text-wrap: true
+      color: #dbe6ee
+      font: verdana-11px-antialised
+      phantom: true
