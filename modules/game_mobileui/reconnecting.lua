@@ -257,6 +257,16 @@ function Adapter:_present()
     return false
   end
   self.backdrop:show()
+  for _, widget in ipairs({
+    self.surface, self.reasonLabel, self.retry, self.logout
+  }) do
+    if widget and not widget:isDestroyed() then
+      widget:show()
+    end
+  end
+  if self.surface and not self.surface:isDestroyed() then
+    self.surface:raise()
+  end
   self.backdrop:raise()
   self.backdrop:focus()
   if self.backdrop.grabKeyboard then
