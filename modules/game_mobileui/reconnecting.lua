@@ -186,7 +186,10 @@ function Adapter:_destroyUi()
   local backdrop = self.backdrop
   self.backdrop = nil
   self.surface = nil
+  self.reasonArea = nil
   self.reasonLabel = nil
+  self.reasonScrollBar = nil
+  self.reasonTouchScroller = nil
   self.retry = nil
   self.logout = nil
   self.fallbackUi = false
@@ -243,15 +246,25 @@ function Adapter:_createUi()
         backdrop = partialBackdrop,
         surface =
           partialBackdrop:recursiveGetChildById('reconnectSurface'),
+        reasonArea =
+          partialBackdrop:recursiveGetChildById('reconnectReasonArea'),
         reasonLabel =
           partialBackdrop:recursiveGetChildById('reconnectReason'),
+        reasonScrollBar =
+          partialBackdrop:recursiveGetChildById('reconnectReasonScrollBar'),
         retry =
           partialBackdrop:recursiveGetChildById('reconnectRetry'),
         logout =
           partialBackdrop:recursiveGetChildById('reconnectLogout')
       }
-      assert(result.surface and result.reasonLabel and result.retry and
-        result.logout, 'reconnect UI is incomplete')
+      assert(result.surface and result.reasonArea and result.reasonLabel and
+        result.reasonScrollBar and result.retry and result.logout,
+        'reconnect UI is incomplete')
+      assert(MobileScrollGesture and MobileScrollGesture.create,
+        'mobile scroll gesture is unavailable')
+      result.reasonTouchScroller =
+        MobileScrollGesture.create(result.reasonScrollBar)
+      result.reasonTouchScroller.bind(result.reasonArea)
       return result
     end,
     cleanup = function()
@@ -276,12 +289,16 @@ function Adapter:_createUi()
 
   self.backdrop = shell.backdrop
   self.surface = shell.surface
+  self.reasonArea = shell.reasonArea
   self.reasonLabel = shell.reasonLabel
+  self.reasonScrollBar = shell.reasonScrollBar
+  self.reasonTouchScroller = shell.reasonTouchScroller
   self.retry = shell.retry
   self.logout = shell.logout
   if not self.backdrop or
-      (not self.fallbackUi and (not self.surface or not self.reasonLabel or
-        not self.retry or not self.logout)) then
+      (not self.fallbackUi and (not self.surface or not self.reasonArea or
+        not self.reasonLabel or not self.reasonScrollBar or
+        not self.reasonTouchScroller or not self.retry or not self.logout)) then
     self:_destroyUi()
     return false
   end
@@ -318,7 +335,7 @@ function Adapter:_present()
   end
   self.backdrop:show()
   for _, widget in ipairs({
-    self.surface, self.reasonLabel, self.retry, self.logout
+    self.surface, self.reasonArea, self.reasonLabel, self.retry, self.logout
   }) do
     if widget and not widget:isDestroyed() then
       widget:show()
