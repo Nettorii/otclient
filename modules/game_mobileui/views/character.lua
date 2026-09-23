@@ -76,7 +76,7 @@ function View:_describeRows(snapshot)
   if snapshot.level then
     local value = displayNumber(snapshot.level.value)
     if snapshot.level.percent ~= nil then
-      value = value .. '  •  ' .. displayPercent(snapshot.level.percent)
+      value = value .. ' / ' .. displayPercent(snapshot.level.percent)
     end
     addRow(rows, 'progress', 'level', 'Level', value)
   end
@@ -90,7 +90,7 @@ function View:_describeRows(snapshot)
       value = value .. '  (base ' .. displayNumber(snapshot.magic.base) .. ')'
     end
     if snapshot.magic.percent ~= nil then
-      value = value .. '  •  ' .. displayPercent(snapshot.magic.percent)
+      value = value .. ' / ' .. displayPercent(snapshot.magic.percent)
     end
     addRow(rows, 'progress', 'magic', 'Magic Level', value)
   end
@@ -110,7 +110,7 @@ function View:_describeRows(snapshot)
       value = value .. '  (base ' .. displayNumber(skill.base) .. ')'
     end
     if skill.percent ~= nil then
-      value = value .. '  •  ' .. displayPercent(skill.percent)
+      value = value .. ' / ' .. displayPercent(skill.percent)
     end
     addRow(rows, 'skills', 'skill:' .. tostring(skill.id),
       skill.name, value)

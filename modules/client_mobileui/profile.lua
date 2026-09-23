@@ -145,6 +145,12 @@ local PROFILE_VALUES = {
   }
 }
 
+local PROFILE_MINIMUMS = {
+  compact = { width = 316, height = 224 },
+  comfortable = { width = 400, height = 288 },
+  tablet = { width = 536, height = 320 }
+}
+
 local MOBILE_OPACITY_DEFAULT = 0.86
 local MOBILE_OPACITY_MIN = 0.72
 local MOBILE_OPACITY_MAX = 1.0
@@ -290,14 +296,16 @@ function applyOverlayTree(root, profileOrOpacity)
   return applied
 end
 
-local function controlClassFor(viewportClass, preset)
+local function controlClassFor(viewportClass, preset, usableWidth, usableHeight)
   if preset == 'compact' then
     return 'compact'
   end
-  if viewportClass == 'tablet' then
-    return 'tablet'
+  local requested = viewportClass == 'tablet' and 'tablet' or 'comfortable'
+  local minimum = PROFILE_MINIMUMS[requested]
+  if usableWidth < minimum.width or usableHeight < minimum.height then
+    return 'compact'
   end
-  return 'comfortable'
+  return requested
 end
 
 computeProfile = function(width, height, safeLeft, safeTop, safeRight, safeBottom,
@@ -320,7 +328,8 @@ computeProfile = function(width, height, safeLeft, safeTop, safeRight, safeBotto
   local usableHeight = math.max(0, height - safeTop - safeBottom - keyboardHeight)
   local class = classForHeight(usableHeight)
   controlPreset = sanitizeControlPreset(controlPreset)
-  local controlClass = controlClassFor(class, controlPreset)
+  local controlClass = controlClassFor(
+    class, controlPreset, usableWidth, usableHeight)
   local values = PROFILE_VALUES[controlClass]
   local viewportValues = PROFILE_VALUES[class]
 

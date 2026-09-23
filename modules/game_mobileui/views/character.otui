@@ -31,7 +31,7 @@ MobileCharacterRow < MobileOverlayPanel
     anchors.left: parent.left
     anchors.verticalCenter: parent.verticalCenter
     margin-left: 10
-    width: 142
+    width: 120
     color: #c4d2dc
     font: verdana-11px-antialised
     text-align: left

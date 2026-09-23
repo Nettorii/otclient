@@ -32,6 +32,7 @@ MobileVipAction < MobileOverlayButton
 
 MobileVipActionSheet < Panel
   height: 56
+  focusable: false
   phantom: false
   layout:
     type: verticalBox
@@ -62,6 +63,7 @@ MobileVipFormTextEdit < MobileOverlayTextQtEdit
 
 MobileVipForm < Panel
   height: 200
+  focusable: false
   phantom: false
   layout:
     type: verticalBox

@@ -88,13 +88,14 @@ function View:_layoutControls(width)
   self.layoutWidth = width
   controls:setWidth(width)
   controls:setHeight(controlsHeight)
+  local origin = controls:getPosition()
   for index, id in ipairs(CONTROL_IDS) do
     local control = self:_widget(id)
     if control then
       local offset = index - 1
       control:setRect({
-        x = (offset % columns) * CONTROL_SIZE,
-        y = math.floor(offset / columns) * CONTROL_SIZE,
+        x = origin.x + (offset % columns) * CONTROL_SIZE,
+        y = origin.y + math.floor(offset / columns) * CONTROL_SIZE,
         width = CONTROL_SIZE,
         height = CONTROL_SIZE
       })

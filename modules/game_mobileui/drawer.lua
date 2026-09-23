@@ -261,12 +261,13 @@ function Host:_beginGesture(position)
   self.gesture.startX = position and position.x or 0
   self.gesture.startY = position and position.y or 0
   self.gesture.lastX = self.gesture.startX
+  self.gesture.lastY = self.gesture.startY
   self.gesture.dragged = false
   self.gesture.closeReady = false
   self.gesture.suppressClick = false
 end
 
-function Host:_moveGesture(position, scrollBar)
+function Host:_moveGesture(position, scrollBar, scrollAxis)
   if self.gesture.startX == nil then
     return false
   end
@@ -289,9 +290,14 @@ function Host:_moveGesture(position, scrollBar)
 
   if scrollBar and self.gesture.dragged and
       scrollBar.getValue and scrollBar.setValue then
-    scrollBar:setValue(scrollBar:getValue() + self.gesture.lastX - x)
+    local delta = self.gesture.lastX - x
+    if scrollAxis == 'vertical' then
+      delta = self.gesture.lastY - y
+    end
+    scrollBar:setValue(scrollBar:getValue() + delta)
   end
   self.gesture.lastX = x
+  self.gesture.lastY = y
   return self.gesture.dragged
 end
 
@@ -312,7 +318,7 @@ function Host:_finishGesture(button)
   return consumed
 end
 
-function Host:_bindGestureWidget(widget, scrollBar)
+function Host:_bindGestureWidget(widget, scrollBar, scrollAxis)
   if self.terminated or not widget or widget:isDestroyed() then
     return false
   end
@@ -343,7 +349,7 @@ function Host:_bindGestureWidget(widget, scrollBar)
       return false
     end,
     onMouseMove = function(host, _, position)
-      return host:_moveGesture(position, scrollBar)
+      return host:_moveGesture(position, scrollBar, scrollAxis)
     end,
     onMouseRelease = function(host, _, _, button)
       if button == MouseLeftButton and host.gesture.dragged then
@@ -430,16 +436,16 @@ function Host:_unbindGestureWidget(widget)
   end
 end
 
-function Host:_bindGestureTree(widget)
+function Host:_bindGestureTree(widget, scrollBar, scrollAxis)
   if not widget or widget:isDestroyed() then
     return
   end
   if widget ~= self.surface then
-    self:_bindGestureWidget(widget)
+    self:_bindGestureWidget(widget, scrollBar, scrollAxis)
   end
   if widget.getChildren then
     for _, child in ipairs(widget:getChildren()) do
-      self:_bindGestureTree(child)
+      self:_bindGestureTree(child, scrollBar, scrollAxis)
     end
   end
 end
@@ -623,6 +629,7 @@ function Host:_destroyBackdrop()
   self.surface = nil
   self.title = nil
   self.content = nil
+  self.contentScrollBar = nil
   self.navigation = nil
   self.navigationScrollBar = nil
   self.geometry = nil
@@ -648,10 +655,13 @@ function Host:_ensureBackdrop(profile)
   local surface = backdrop:recursiveGetChildById('drawerSurface')
   local title = backdrop:recursiveGetChildById('drawerTitle')
   local content = backdrop:recursiveGetChildById('drawerContent')
+  local contentScrollBar =
+    backdrop:recursiveGetChildById('drawerContentScrollBar')
   local navigation = backdrop:recursiveGetChildById('drawerNavigation')
   local navigationScrollBar =
     backdrop:recursiveGetChildById('drawerNavigationScrollBar')
-  if not surface or not title or not content or not navigation or
+  if not surface or not title or not content or not contentScrollBar or
+      not navigation or
       not navigationScrollBar then
     backdrop:destroy()
     return false
@@ -661,6 +671,7 @@ function Host:_ensureBackdrop(profile)
   self.surface = surface
   self.title = title
   self.content = content
+  self.contentScrollBar = contentScrollBar
   self.navigation = navigation
   self.navigationScrollBar = navigationScrollBar
   backdrop:setPhantom(false)
@@ -722,7 +733,14 @@ function Host:_ensureBackdrop(profile)
         host:_finishGesture(button)
       end
       if tap and releasedOutside then
-        host:close()
+        -- Keep the backdrop alive until this release has been consumed. Destroying
+        -- it inline lets the same browser touch fall through to the game map.
+        scheduleEvent(function()
+          if binding.host == host and host.backdrop == backdrop and
+              not backdrop:isDestroyed() then
+            host:close()
+          end
+        end, 350)
       end
     else
       host.backdropPressOutside = false
@@ -1030,7 +1048,7 @@ function Host:open(id)
       not view:isDestroyed() and view:getParent() ~= holder then
     view:setParent(holder)
   end
-  self:_bindGestureTree(holder)
+  self:_bindGestureTree(holder, self.contentScrollBar, 'vertical')
 
   local shown, showResult = self:_callRecord(
     record, entry.descriptor.onShow)
@@ -1041,6 +1059,10 @@ function Host:open(id)
     self:_requestCleanup(record)
     return false
   end
+  -- onShow may install feature-specific handlers (for example UIMinimap).
+  -- Re-wrap the final handlers so vertical drawer scrolling remains first.
+  self:_unbindGestureTree(holder)
+  self:_bindGestureTree(holder, self.contentScrollBar, 'vertical')
   if type(self.mobileUi.applyOverlayTree) == 'function' then
     self.mobileUi.applyOverlayTree(holder, self.getProfile())
   end

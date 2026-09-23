@@ -109,9 +109,11 @@ MobileSettingsSectionLabel < Label
 MobileSettingsOptionRow < MobileSettingsValueRow
 
 MobileSettingsModalClose < MobileSettingsTouchButton
+  focusable: false
 
 MobileSettingsOptionSheet < Panel
   height: 56
+  focusable: false
   phantom: false
   layout:
     type: verticalBox

@@ -165,6 +165,20 @@ function View:_showCategory(categoryId)
     generation = generation
   }
   self.modalSession = session
+  local close = g_ui.createWidget('MobileSettingsModalClose', body)
+  close:setId('mobileSettingsModalClose')
+  close:setText(tr('Close'))
+  close.onClick = function()
+    if consumeModalGesture(session) then
+      return true
+    end
+    if self.modalSession == session and
+        self.modalGeneration == generation then
+      self:_closeOwnedModal()
+    end
+    return true
+  end
+
   for index, definition in ipairs(category.options) do
     local row = g_ui.createWidget('MobileSettingsOptionRow', body)
     row:setId('mobileOption_' .. definition.key)
@@ -189,19 +203,6 @@ function View:_showCategory(categoryId)
     end
   end
 
-  local close = g_ui.createWidget('MobileSettingsModalClose', body)
-  close:setId('mobileSettingsModalClose')
-  close:setText(tr('Close'))
-  close.onClick = function()
-    if consumeModalGesture(session) then
-      return true
-    end
-    if self.modalSession == session and
-        self.modalGeneration == generation then
-      self:_closeOwnedModal()
-    end
-    return true
-  end
   body:setHeight(
     (#category.options + 1) * 56 + #category.options * 4)
 
@@ -250,6 +251,7 @@ function View:create(parent)
   self.holder = parent
   self.root = g_ui.createWidget('MobileSettingsView', parent)
   self.root:setWidth(math.max(0, parent:getWidth()))
+  self.holder:setHeight(self.root:getHeight())
   self:_configureMobileControls()
   self:_configureCategories()
   self:_renderMobileValues(self.mobileUi.getProfile())
