@@ -23,11 +23,20 @@ local function profileText(profile)
 end
 
 local function logCreationError(config, errorMessage)
+  local activeState = 'unknown'
+  if type(getForeground) == 'function' then
+    local ok, state = pcall(getForeground)
+    if ok then
+      activeState = state
+    end
+  end
   g_logger.error(string.format(
-    '[mobile-ui-fallback] view creation failed module=%s view=%s profile=%s: %s',
+    '[mobile-ui-fallback] view creation failed module=%s view=%s profile=%s activeState=%s requestedState=%s: %s',
     tostring(config.module or 'unknown'),
     tostring(config.view or 'unknown'),
     profileText(config.profile),
+    tostring(activeState or 'none'),
+    tostring(config.state or 'none'),
     tostring(errorMessage)))
 end
 

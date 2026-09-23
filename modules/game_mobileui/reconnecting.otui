@@ -36,21 +36,40 @@ MobileReconnectBackdrop < MobileOverlayPanel
       font: verdana-11px-antialised
       phantom: true
 
-    Label
-      id: reconnectReason
+    UIScrollArea
+      id: reconnectReasonArea
       anchors.left: parent.left
-      anchors.right: parent.right
+      anchors.right: reconnectReasonScrollBar.left
       anchors.top: reconnectTitle.bottom
       anchors.bottom: reconnectActions.top
       margin-left: 18
-      margin-right: 18
+      margin-right: 4
       margin-top: 10
       margin-bottom: 12
-      text-align: center
-      text-wrap: true
-      color: #c8d5df
-      font: verdana-11px-antialised
-      phantom: true
+      vertical-scrollbar: reconnectReasonScrollBar
+      clipping: true
+      layout: verticalBox
+
+      Label
+        id: reconnectReason
+        min-height: 32
+        text-align: center
+        text-wrap: true
+        text-auto-resize: true
+        color: #c8d5df
+        font: verdana-11px-antialised
+        phantom: true
+
+    VerticalScrollBar
+      id: reconnectReasonScrollBar
+      anchors.top: reconnectTitle.bottom
+      anchors.bottom: reconnectActions.top
+      anchors.right: parent.right
+      margin-top: 10
+      margin-right: 12
+      margin-bottom: 12
+      step: 48
+      pixels-scroll: true
 
     Panel
       id: reconnectActions

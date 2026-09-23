@@ -322,7 +322,7 @@ local function controlClassFor(viewportClass, preset, usableWidth, usableHeight)
 end
 
 computeProfile = function(width, height, safeLeft, safeTop, safeRight, safeBottom,
-    keyboardHeight, controlPreset, handedness, overlayOpacity)
+    keyboardHeight, controlPreset, handedness, overlayOpacity, forceCompact)
   -- Preserve the pre-settings helper signature for existing profile contracts.
   if (controlPreset == 'standard' or controlPreset == 'mirrored') and
       handedness == nil then
@@ -339,7 +339,10 @@ computeProfile = function(width, height, safeLeft, safeTop, safeRight, safeBotto
 
   local usableWidth = math.max(0, width - safeLeft - safeRight)
   local usableHeight = math.max(0, height - safeTop - safeBottom - keyboardHeight)
-  local class = classForHeight(usableHeight)
+  local class = forceCompact and 'compact' or classForHeight(usableHeight)
+  if forceCompact then
+    controlPreset = 'compact'
+  end
   controlPreset = sanitizeControlPreset(controlPreset)
   local controlClass = controlClassFor(
     class, controlPreset, usableWidth, usableHeight)
@@ -521,10 +524,9 @@ local function readViewportMetrics()
   rootWidget = rootWidget or g_ui.getRootWidget()
   local viewportWidth = getWindowMetric('getViewportWidth')
   local viewportHeight = getWindowMetric('getViewportHeight')
-  if viewportWidth <= 0 then
+  local unknownViewport = viewportWidth <= 0 or viewportHeight <= 0
+  if unknownViewport then
     viewportWidth = rootWidget:getWidth()
-  end
-  if viewportHeight <= 0 then
     viewportHeight = rootWidget:getHeight()
   end
   local controlPreset = readMobileOption(
@@ -535,14 +537,15 @@ local function readViewportMetrics()
     'mobileOverlayOpacity', MOBILE_OPACITY_DEFAULT, 'getNumber')
   return viewportWidth,
     viewportHeight,
-    getWindowMetric('getSafeAreaInsetLeft'),
-    getWindowMetric('getSafeAreaInsetTop'),
-    getWindowMetric('getSafeAreaInsetRight'),
-    getWindowMetric('getSafeAreaInsetBottom'),
-    getWindowMetric('getKeyboardHeight'),
+    unknownViewport and 0 or getWindowMetric('getSafeAreaInsetLeft'),
+    unknownViewport and 0 or getWindowMetric('getSafeAreaInsetTop'),
+    unknownViewport and 0 or getWindowMetric('getSafeAreaInsetRight'),
+    unknownViewport and 0 or getWindowMetric('getSafeAreaInsetBottom'),
+    unknownViewport and 0 or getWindowMetric('getKeyboardHeight'),
     controlPreset,
     handedness,
-    overlayOpacity
+    overlayOpacity,
+    unknownViewport
 end
 
 local function bindViewportChanges(refresh)

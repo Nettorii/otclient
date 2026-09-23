@@ -944,7 +944,7 @@ function CharacterList.terminate()
     if mobileGameplay and mobileGameplay.closeReconnecting then
         mobileGameplay.closeReconnecting()
     end
-    enteredWorld = false
+    wasEnteredWorld = false
     reconnectActive = false
     reconnectAttempt = false
     destroyCreateAccount()
