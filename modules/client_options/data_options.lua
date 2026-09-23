@@ -4,6 +4,13 @@ local MOBILE_OPACITY_DEFAULT = 0.86
 local MOBILE_OPACITY_MIN = 0.72
 local MOBILE_OPACITY_MAX = 1.0
 
+local function mobileV2Runtime()
+    local mobileUi = modules and modules.client_mobileui
+    return g_platform and g_platform.isMobile and g_platform.isMobile() and
+        mobileUi and type(mobileUi.isV2Enabled) == 'function' and
+        mobileUi.isV2Enabled()
+end
+
 local function publishMobileProfile()
     local mobileUi = modules and modules.client_mobileui
     local clientOptions = modules and modules.client_options
@@ -537,18 +544,24 @@ return {
         event = nil,
         value = g_platform.isMobile() and 2 or 0,
         action = function(value, options, controller, panels, extraWidgets)
-            value = value / 2
-
             if options.hudScale.event ~= nil then
                 removeEvent(options.hudScale.event)
+                options.hudScale.event = nil
             end
 
+            local hudWidget = panels.interfaceHUD:recursiveGetChildById('hudScale')
+            if mobileV2Runtime() then
+                local density = g_window.getDisplayDensity()
+                hudWidget:setText(string.format('HUD Scale: %sx', density))
+                return
+            end
+
+            value = value / 2
             options.hudScale.event = scheduleEvent(function()
                 g_app.setHUDScale(math.max(value + 0.5, 1))
                 options.hudScale.event = nil
             end, 250)
 
-            local hudWidget = panels.interfaceHUD:recursiveGetChildById('hudScale')
             hudWidget:setText(string.format('HUD Scale: %sx', math.max(value + 0.5, 1)))
         end
     },
