@@ -72,6 +72,18 @@ MobileMinimapMarkBody < Panel
       flow: true
     phantom: false
 
+MobileMinimapDeleteBody < Panel
+  height: 56
+
+  Label
+    id: minimapMarkDeleteMessage
+    anchors.fill: parent
+    color: #dbe6ee
+    font: verdana-11px-antialised
+    text-align: center
+    text-wrap: true
+    phantom: true
+
 MobileMinimapView < Panel
   height: 324
   anchors.left: parent.left

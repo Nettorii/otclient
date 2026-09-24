@@ -34,13 +34,20 @@ function View:_restoreFlagInput()
   end
   for _, flag in pairs(self.map.flags or {}) do
     if flag.mobileDrawerOnMouseRelease then
+      local currentFlag = flag
       flag.onMousePress = function()
         return true
       end
       flag.onMouseMove = function()
         return true
       end
-      flag.onMouseRelease = flag.mobileDrawerOnMouseRelease
+      flag.onMouseRelease = function(widget, position, button)
+        if button == MouseRightButton then
+          return self:_showFlagDeleteModal(currentFlag)
+        end
+        return currentFlag.mobileDrawerOnMouseRelease(
+          widget, position, button)
+      end
     end
   end
 end
@@ -58,6 +65,14 @@ function View:_isolateMapInput()
     return true
   end
   map.onMouseRelease = function(widget, position, button)
+    if button == MouseRightButton then
+      widget.allowNextRelease = false
+      local mapPosition = widget:getTilePosition(position)
+      if mapPosition then
+        self:_showFlagModal(mapPosition)
+      end
+      return true
+    end
     UIMinimap.onMouseRelease(widget, position, button)
     self:_restoreFlagInput()
     return true
@@ -143,6 +158,60 @@ function View:_showFlagModal(position)
       { id = 'minimapMarkCancel', text = tr('Cancel'), callback = close }
     },
     onEnter = save,
+    onEscape = close,
+    onClose = function()
+      if self.flagModal == handle then
+        self.flagModal = nil
+      end
+    end
+  })
+  if not handle or not handle:isOpen() then
+    if body and not body:isDestroyed() then
+      body:destroy()
+    end
+    return false
+  end
+  self.flagModal = handle
+  return true
+end
+
+function View:_showFlagDeleteModal(flag)
+  if not flag or flag:isDestroyed() then
+    return false
+  end
+  self:_closeFlagModal()
+
+  local body = g_ui.createWidget('MobileMinimapDeleteBody')
+  local message =
+    body:recursiveGetChildById('minimapMarkDeleteMessage')
+  assert(message, 'mobile minimap delete form is incomplete')
+  local description = type(flag.description) == 'string' and
+    flag.description or ''
+  message:setText(description ~= '' and description or
+    tr('Delete this map mark?'))
+
+  local handle
+  local function close()
+    if handle and handle:isOpen() then
+      handle:close()
+    end
+    return true
+  end
+  local function remove()
+    if flag and not flag:isDestroyed() then
+      flag:destroy()
+    end
+    close()
+    return true
+  end
+  handle = modules.client_mobileui.showModal({
+    title = tr('Delete Map Mark'),
+    body = body,
+    buttons = {
+      { id = 'minimapMarkDelete', text = tr('Delete'), callback = remove },
+      { id = 'minimapMarkDeleteCancel', text = tr('Cancel'), callback = close }
+    },
+    onEnter = remove,
     onEscape = close,
     onClose = function()
       if self.flagModal == handle then
