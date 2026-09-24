@@ -68,6 +68,98 @@ function View:_isolateMapInput()
   self:_restoreFlagInput()
 end
 
+function View:_closeFlagModal()
+  local handle = self.flagModal
+  self.flagModal = nil
+  if handle and handle.isOpen and handle:isOpen() then
+    handle:close()
+  end
+end
+
+function View:_showFlagModal(position)
+  if not position or not self.map or self.map:isDestroyed() then
+    return false
+  end
+  self:_closeFlagModal()
+
+  local body = g_ui.createWidget('MobileMinimapMarkBody')
+  local positionLabel =
+    body:recursiveGetChildById('minimapMarkPosition')
+  local description =
+    body:recursiveGetChildById('minimapMarkDescription')
+  local flags = body:recursiveGetChildById('minimapMarkFlags')
+  assert(positionLabel and description and flags,
+    'mobile minimap mark form is incomplete')
+  positionLabel:setText(string.format(
+    '%i, %i, %i', position.x, position.y, position.z))
+
+  local selectedIcon = 0
+  local flagButtons = {}
+  local function selectIcon(icon)
+    selectedIcon = icon
+    for candidate, button in pairs(flagButtons) do
+      button:setOn(candidate == icon)
+    end
+  end
+  for icon = 0, 19 do
+    local flagIcon = icon
+    local button = g_ui.createWidget('MobileMinimapMarkFlag', flags)
+    button:setId('minimapMarkFlag' .. tostring(flagIcon))
+    button:setText(tostring(flagIcon + 1))
+    button:setTooltip(tr('Map mark %d', flagIcon + 1))
+    if button.setImageSource then
+      button:setImageSource(
+        '/images/game/minimap/flag' .. tostring(flagIcon))
+    end
+    button.onClick = function()
+      selectIcon(flagIcon)
+      return true
+    end
+    flagButtons[flagIcon] = button
+  end
+  selectIcon(0)
+
+  local handle
+  local function close()
+    if handle and handle:isOpen() then
+      handle:close()
+    end
+    return true
+  end
+  local function save()
+    if not self.map or self.map:isDestroyed() then
+      close()
+      return false
+    end
+    self.map:addFlag(position, selectedIcon, description:getText())
+    close()
+    return true
+  end
+  handle = modules.client_mobileui.showModal({
+    title = tr('Create Map Mark'),
+    body = body,
+    buttons = {
+      { id = 'minimapMarkSave', text = tr('Save'), callback = save },
+      { id = 'minimapMarkCancel', text = tr('Cancel'), callback = close }
+    },
+    onEnter = save,
+    onEscape = close,
+    onClose = function()
+      if self.flagModal == handle then
+        self.flagModal = nil
+      end
+    end
+  })
+  if not handle or not handle:isOpen() then
+    if body and not body:isDestroyed() then
+      body:destroy()
+    end
+    return false
+  end
+  self.flagModal = handle
+  return true
+end
+
 function View:_layoutControls(width)
   if self.layingOut then
     return true
@@ -199,6 +291,9 @@ function View:create(parent)
   if not self.map then
     return self.root
   end
+  self.map.createFlagWindow = function(_, position)
+    return self:_showFlagModal(position)
+  end
 
   local previousCameraChange = self.map.onCameraPositionChange
   self.map.onCameraPositionChange = function(widget, position, oldPosition)
@@ -234,6 +329,7 @@ end
 function View:destroy()
   self.controlsLayoutGeneration =
     (self.controlsLayoutGeneration or 0) + 1
+  self:_closeFlagModal()
   self:onHide()
   if self.root and not self.root:isDestroyed() then
     self.root:destroy()

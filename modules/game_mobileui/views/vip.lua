@@ -278,6 +278,8 @@ function View:_showEditVipForm(id)
   end
   local snapshot = self.vip.getVipSnapshot()
   local body = createForm()
+  local save = addFormAction(body, 'formSave', tr('Save'))
+  local cancel = addFormAction(body, 'formCancel', tr('Cancel'))
   addLabel(body, 'formVipName', entry.name)
   addLabel(body, 'formDescriptionLabel', tr('Description'))
   local description = addTextField(
@@ -321,8 +323,6 @@ function View:_showEditVipForm(id)
     end
   end
 
-  local save = addFormAction(body, 'formSave', tr('Save'))
-  local cancel = addFormAction(body, 'formCancel', tr('Cancel'))
   local session, generation
   local function saveForm()
     return self:_runModalAction(session, generation, function()

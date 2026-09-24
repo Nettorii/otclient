@@ -23,6 +23,55 @@ MobileMinimapButton < MobileOverlayButton
   $pressed:
     border-color: #9fc0d699
 
+MobileMinimapMarkFlag < MobileOverlayButton
+  min-width: 48
+  min-height: 48
+  width: 48
+  height: 48
+  background-color: #101c29ee
+  mobile-overlay-base: #101c29
+  border-width: 1
+  border-color: #7891a455
+  color: #dbe6ee
+  font: verdana-11px-antialised
+  text-align: center
+  phantom: false
+
+  $on:
+    border-width: 2
+    border-color: #9fc0d6cc
+
+  $pressed:
+    border-color: #9fc0d699
+
+MobileMinimapMarkBody < Panel
+  height: 330
+  layout:
+    type: verticalBox
+    spacing: 6
+
+  Label
+    id: minimapMarkPosition
+    height: 24
+    color: #dbe6ee
+    font: verdana-11px-antialised
+    text-align: center
+    phantom: true
+
+  TextEdit
+    id: minimapMarkDescription
+    height: 48
+    min-height: 48
+
+  Panel
+    id: minimapMarkFlags
+    height: 240
+    layout:
+      type: grid
+      cell-size: 48 48
+      flow: true
+    phantom: false
+
 MobileMinimapView < Panel
   height: 324
   anchors.left: parent.left

@@ -587,6 +587,9 @@ function showModal(config)
 
     for _, buttonConfig in ipairs(config.buttons or {}) do
       local button = g_ui.createWidget('MobileModalButton', footer)
+      if buttonConfig.id then
+        button:setId(buttonConfig.id)
+      end
       button:setText(buttonConfig.text or '')
       button.onClick = function()
         if footerScroller.consume() then
