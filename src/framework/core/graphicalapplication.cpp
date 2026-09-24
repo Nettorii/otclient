@@ -83,6 +83,10 @@ void GraphicalApplication::init(std::vector<std::string>& args, ApplicationConte
         g_lua.callGlobalField("g_window", "onViewportMetricsChange");
     });
 
+    g_window.setOnMultiTouch([](const std::string& phase, const std::vector<Point>& points) {
+        g_lua.callGlobalField("g_window", "onMultiTouch", phase, points);
+    });
+
     g_mouse.init();
 
     // initialize ui

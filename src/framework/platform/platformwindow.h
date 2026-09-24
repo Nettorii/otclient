@@ -51,6 +51,7 @@ class PlatformWindow
     using OnInputEventCallback = std::function<void(const InputEvent&)>;
     using OnFocusChangeCallback = std::function<void(bool)>;
     using OnViewportMetricsChangeCallback = std::function<void()>;
+    using OnMultiTouchCallback = std::function<void(const std::string&, const std::vector<Point>&)>;
 
 public:
     virtual void init() = 0;
@@ -145,6 +146,7 @@ public:
     void setOnInputEvent(const OnInputEventCallback& onInputEvent) { m_onInputEvent = onInputEvent; }
     void setOnFocusChange(const OnFocusChangeCallback& onFocusChange) { m_onFocusChange = onFocusChange; }
     void setOnViewportMetricsChange(const OnViewportMetricsChangeCallback& onViewportMetricsChange) { m_onViewportMetricsChange = onViewportMetricsChange; }
+    void setOnMultiTouch(const OnMultiTouchCallback& onMultiTouch) { m_onMultiTouch = onMultiTouch; }
     void setViewportMetrics(const ViewportMetrics& viewportMetrics);
 
     void addKeyListener(std::function<void(const InputEvent&)> listener) { m_keyListeners.push_back(listener); }
@@ -192,6 +194,7 @@ protected:
     OnInputEventCallback m_onInputEvent;
     OnFocusChangeCallback m_onFocusChange;
     OnViewportMetricsChangeCallback m_onViewportMetricsChange;
+    OnMultiTouchCallback m_onMultiTouch;
 
     std::vector<std::function<void(const InputEvent&)>> m_keyListeners;
 };

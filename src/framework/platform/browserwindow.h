@@ -86,6 +86,7 @@ private:
     bool m_running;
     ticks_t m_touchStartTicks{ -1 }; // wall clock (stdext::millis) at touchstart, -1 when moved/released
     bool m_usingTouch = false;
+    bool m_multiTouchActive = false; // set once two fingers are down, cleared when all are lifted
     std::vector<std::pair<char const*, Fw::Key>> web_keymap;
     std::string m_clipboardText;
     std::vector<std::string> m_cursors;

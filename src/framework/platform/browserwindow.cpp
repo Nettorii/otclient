@@ -536,6 +536,30 @@ void BrowserWindow::handleTouchCallback(int eventType, const EmscriptenTouchEven
     // With PROXY_TO_PTHREAD the DOM event is copied into a malloc'd struct that emscripten
     // frees as soon as this callback returns, so nothing below may keep the `event` pointer:
     // everything the deferred dispatcher events need is copied out by value here.
+
+    // Emscripten lists every finger on the surface (plus the lifted ones on touchend),
+    // ordered by identifier. The mouse synthesis below keeps using touches[0] as before;
+    // gestures get the remaining fingers through a separate callback that is queued
+    // first, so Lua can claim a gesture before the synthesized press is dispatched.
+    std::vector<Point> activeTouches;
+    for (int i = 0; i < event->numTouches; ++i) {
+        const EmscriptenTouchPoint& point = event->touches[i];
+        if (eventType == EMSCRIPTEN_EVENT_TOUCHEND && point.isChanged)
+            continue;
+        activeTouches.emplace_back(point.targetX / m_displayDensity, point.targetY / m_displayDensity);
+    }
+    if (activeTouches.size() >= 2)
+        m_multiTouchActive = true;
+    if (m_multiTouchActive) {
+        const std::string phase = eventType == EMSCRIPTEN_EVENT_TOUCHSTART ? "start" : eventType == EMSCRIPTEN_EVENT_TOUCHEND ? "end" : "move";
+        g_dispatcher.addEvent([this, phase, activeTouches] {
+            if (m_onMultiTouch)
+                m_onMultiTouch(phase, activeTouches);
+        });
+        if (activeTouches.empty())
+            m_multiTouchActive = false;
+    }
+
     const EmscriptenTouchPoint& touch = event->touches[0];
     if (touch.screenX == 0 || touch.screenY == 0 || touch.clientX == 0 || touch.clientY == 0 || touch.targetX == 0 || touch.targetY == 0)
         return;
