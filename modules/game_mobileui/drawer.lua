@@ -543,6 +543,7 @@ function Host:_renderNavigation()
     }
     self.navigationOwners[button] = owner
     button.drawerViewId = id
+    button:setId('drawerTab_' .. id)
     button:setText(entry.descriptor.title)
     if entry.descriptor.icon ~= '' and button.setImageSource then
       button:setImageSource(entry.descriptor.icon)
