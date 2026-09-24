@@ -529,6 +529,7 @@ function showModal(config)
     self.content = widget
     widget:setParent(bodyArea)
     widget:setWidth(math.max(0, bodyArea:getWidth() - 8))
+    bodyScrollBar:setValue(bodyScrollBar:getMinimum())
     bindWidgetTree(bodyScroller, bodyArea)
     applyOverlayTree(widget, getProfile())
     return true
