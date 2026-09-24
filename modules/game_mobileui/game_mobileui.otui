@@ -19,26 +19,25 @@ UIWidget
       text: STATUS
       color: #d7e2eb
       font: verdana-8px-rounded
+      text-align: left
       phantom: true
 
     Label
       id: level
       anchors.top: parent.top
-      anchors.left: statusName.right
+      anchors.left: parent.left
       margin-top: 3
-      margin-left: 2
       width: 30
       color: #b9c9d5
       font: verdana-8px-rounded
-      text-align: center
+      text-align: left
       phantom: true
 
     Label
       id: vocation
       anchors.top: parent.top
-      anchors.right: parent.right
+      anchors.left: parent.left
       margin-top: 3
-      margin-right: 6
       width: 72
       color: #b9c9d5
       font: verdana-8px-rounded
@@ -48,13 +47,12 @@ UIWidget
     Label
       id: stamina
       anchors.top: parent.top
-      anchors.left: level.right
+      anchors.left: parent.left
       margin-top: 3
-      margin-left: 2
       width: 48
       color: #b9c9d5
       font: verdana-8px-rounded
-      text-align: center
+      text-align: left
       phantom: true
       visible: false
 
