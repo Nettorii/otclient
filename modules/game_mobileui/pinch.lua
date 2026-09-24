@@ -45,8 +45,12 @@ function MobilePinch.create(options)
     onBegin = options.onBegin or function() end,
     onStep = options.onStep or function() return false end,
     onFinish = options.onFinish or function() end,
+    -- the browser's synthesized long-touch right click reaches the UI two dispatcher
+    -- polls after the last touchend, whatever the frame time
     schedule = options.schedule or function(callback, delay)
-      return scheduleEvent(callback, delay)
+      return scheduleEvent(function()
+        addEvent(function() addEvent(callback) end)
+      end, delay)
     end,
     cancel = options.cancel or function(event) removeEvent(event) end,
     state = 'idle',
@@ -72,7 +76,10 @@ function Gesture:reset()
   self.anchor = nil
 end
 
-function Gesture:_finish()
+function Gesture:_finish(latch)
+  if self.latchEvent ~= latch then
+    return
+  end
   self.latchEvent = nil
   self.state = 'idle'
   self.anchor = nil
@@ -123,7 +130,9 @@ function Gesture:handle(phase, points)
   if count == 0 then
     self.anchor = nil
     if not self.latchEvent then
-      self.latchEvent = self.schedule(function() self:_finish() end, self.latchMs)
+      local latch
+      latch = self.schedule(function() self:_finish(latch) end, self.latchMs)
+      self.latchEvent = latch
     end
     return
   end
