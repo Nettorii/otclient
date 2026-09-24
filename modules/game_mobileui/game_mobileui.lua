@@ -27,6 +27,12 @@ local lastProfileKey
 local fallbackModal
 local foregroundOwner = {}
 local initializeGameplay
+local zoomOutButton
+local zoomInButton
+local currentLayout
+local lastShellDockMessage
+
+local SHELL_DOCK_BUTTONS = 3
 
 local function nonNegative(value)
   return math.max(0, tonumber(value) or 0)
@@ -159,6 +165,51 @@ local function computeLayout(profile)
     target,
     target)
 
+  local topRowLeft = drawerRect.x + drawerRect.width + gap
+  local topRowRight = menuRect.x - gap
+  local topRowBottom = menuRect.y + menuRect.height + gap
+  local bottomRowLeft = {
+    x = leftEdge, right = hotbarRect.x - gap
+  }
+  local bottomRowRight = {
+    x = hotbarRect.x + hotbarRect.width + gap, right = rightEdge
+  }
+  local actionsZone = mirrored and bottomRowLeft or bottomRowRight
+  local joystickZone = mirrored and bottomRowRight or bottomRowLeft
+
+  -- The browser shell's keyboard, fullscreen and music buttons are fixed
+  -- 48 px DOM buttons; the dock is where the shell may place them.
+  local dockWidth = SHELL_DOCK_BUTTONS * 48 + (SHELL_DOCK_BUTTONS - 1) * gap
+  local shellDock
+  if topRowRight - topRowLeft >= dockWidth then
+    shellDock = rect(topRowRight - dockWidth, safeTop + margin, dockWidth, target)
+  elseif joystickZone.right - joystickZone.x >= dockWidth then
+    shellDock = rect(mirrored and joystickZone.right - dockWidth or joystickZone.x,
+      hotbarRect.y, dockWidth, target)
+  end
+
+  local zoomWidth = target * 2 + gap
+  local zoomOutRect
+  local zoomInRect
+  local actionsTop = controlBottom - actionSize
+  local outerColumn = mirrored and leftEdge or rightEdge - target
+  if actionsZone.right - actionsZone.x >= zoomWidth then
+    local zoomX = mirrored and actionsZone.x or actionsZone.right - zoomWidth
+    zoomOutRect = rect(zoomX, hotbarRect.y, target, target)
+    zoomInRect = rect(zoomX + target + gap, hotbarRect.y, target, target)
+  elseif actionsTop - gap - topRowBottom >= target * 2 + gap then
+    zoomInRect = rect(outerColumn, actionsTop - gap - target * 2 - gap,
+      target, target)
+    zoomOutRect = rect(outerColumn, actionsTop - gap - target, target, target)
+  else
+    local zoomRight = shellDock and shellDock.y == menuRect.y and
+      shellDock.x - gap or topRowRight
+    if zoomRight - topRowLeft >= zoomWidth then
+      zoomOutRect = rect(zoomRight - zoomWidth, menuRect.y, target, target)
+      zoomInRect = rect(zoomRight - target, menuRect.y, target, target)
+    end
+  end
+
   return {
     controlsFit = true,
     minimumWidth = minimumWidth,
@@ -171,14 +222,36 @@ local function computeLayout(profile)
     hotbar = hotbarRect,
     actions = actionsRect,
     drawerHandle = drawerRect,
+    zoomOut = zoomOutRect,
+    zoomIn = zoomInRect,
+    shellDock = shellDock,
     actionButtons = actionButtons,
     hotbarSlots = hotbarSlots
   }
 end
 
+function computeGameplayLayout(profile)
+  return computeLayout(profile)
+end
+
 local function applyRect(widget, geometry)
   if widget then
     widget:setRect(geometry)
+  end
+end
+
+local function applyJoystickAppearance(joystick)
+  local pad = joystick.getPanel and joystick.getPanel()
+  if not pad or pad:isDestroyed() or pad.mobileV2Appearance then
+    return
+  end
+  pad.mobileV2Appearance = true
+  pad:setBackgroundColor('alpha')
+  pad:setImageSource('/modules/game_mobileui/images/joystick_base')
+  pad:setImageRect({ x = 0, y = 0, width = 0, height = 0 })
+  local pointer = pad:getChildById('pointer')
+  if pointer then
+    pointer:setImageSource('/modules/game_mobileui/images/joystick_thumb')
   end
 end
 
@@ -188,9 +261,16 @@ local function synchronizeJoystick(bounds)
     return
   end
 
+  applyJoystickAppearance(joystick)
   if bounds and joystick.setBounds then
     joystick.setEnabled(false)
     joystick.setBounds(bounds)
+    local pad = joystick.getPanel and joystick.getPanel()
+    local pointer = pad and pad:getChildById('pointer')
+    if pointer then
+      local thumb = math.floor(math.min(bounds.width, bounds.height) * 0.42)
+      pointer:setSize({ width = thumb, height = thumb })
+    end
   end
 
   local visible = gameActive and controlsFit and hud and
@@ -227,15 +307,79 @@ local function synchronizeHotbar()
   end
 end
 
+local function gameMapPanel()
+  local gameInterface = modules.game_interface
+  return gameInterface and gameInterface.getMapPanel and
+    gameInterface.getMapPanel() or nil
+end
+
+local function synchronizeZoomTargets(enabled)
+  local map = gameMapPanel()
+  local zoom = map and map.getZoom and map:getZoom()
+  if zoomInButton then
+    zoomInButton:setEnabled(enabled and zoom ~= nil and
+      zoom > map:getMaxZoomIn())
+  end
+  if zoomOutButton then
+    zoomOutButton:setEnabled(enabled and zoom ~= nil and
+      zoom < map:getMaxZoomOut())
+  end
+end
+
+local function publishShellDock()
+  local message
+  local layout = currentLayout
+  if actionsAreActive() and layout and layout.controlsFit and
+      layout.shellDock then
+    local dock = layout.shellDock
+    message = string.format('[mobile-shell] dock %d %d %d %d',
+      dock.x, dock.y, dock.width, dock.height)
+  elseif gameActive and hud and not hud:isDestroyed() then
+    message = '[mobile-shell] dock hidden'
+  else
+    message = '[mobile-shell] dock reset'
+  end
+  if message ~= lastShellDockMessage then
+    lastShellDockMessage = message
+    g_logger.info(message)
+  end
+end
+
 local function synchronizeInputTargets()
   local enabled = actionsAreActive()
   if menu then
-    menu:setEnabled(enabled)
+    menu:setEnabled(enabled and drawerHost ~= nil and drawerHost:hasViews())
   end
   if drawerHandle then
     drawerHandle:setEnabled(
       enabled and drawerHost ~= nil and drawerHost:hasViews())
   end
+  synchronizeZoomTargets(enabled)
+  publishShellDock()
+end
+
+-- direction > 0 zooms in (fewer tiles), direction < 0 zooms out.
+function zoomMap(direction)
+  if not actionsAreActive() then
+    return false
+  end
+  local map = gameMapPanel()
+  if not map then
+    return false
+  end
+  local changed
+  if direction > 0 then
+    changed = map:zoomIn()
+  elseif direction < 0 then
+    changed = map:zoomOut()
+  end
+  synchronizeZoomTargets(true)
+  return changed == true
+end
+
+function getMapZoom()
+  local map = gameMapPanel()
+  return map and map:getZoom() or nil
 end
 
 local function cancelOwnedGestures()
@@ -334,6 +478,18 @@ local function applyComputedLayout(layout)
   applyRect(hotbar, layout.hotbar)
   applyRect(actions, layout.actions)
   applyRect(drawerHandle, layout.drawerHandle)
+  currentLayout = layout
+  for _, entry in ipairs({
+    { widget = zoomOutButton, geometry = layout.zoomOut },
+    { widget = zoomInButton, geometry = layout.zoomIn }
+  }) do
+    if entry.widget then
+      if entry.geometry then
+        applyRect(entry.widget, entry.geometry)
+      end
+      entry.widget:setVisible(entry.geometry ~= nil)
+    end
+  end
 
   for index, geometry in ipairs(layout.hotbarSlots) do
     local slot = hotbar:getChildById('slot' .. index)
@@ -607,6 +763,13 @@ function toggleDrawer()
   return actionAdapter and actionAdapter:toggleDrawer() or false
 end
 
+function openMenu()
+  if not actionsAreActive() or not drawerHost then
+    return false
+  end
+  return drawerHost:open('settings') or false
+end
+
 function registerChatHandler(handler)
   if not actionAdapter then
     return false
@@ -783,6 +946,11 @@ function runSelfTests()
       layout.actions,
       layout.drawerHandle
     }
+    for _, optional in ipairs({ 'zoomOut', 'zoomIn', 'shellDock' }) do
+      if layout[optional] then
+        direct[#direct + 1] = layout[optional]
+      end
+    end
     for index, geometry in ipairs(direct) do
       assert(insideUsable(geometry, profile),
         'gameplay direct control must remain inside usable rect: ' .. index)
@@ -823,6 +991,8 @@ function runSelfTests()
 
   for _, profile in ipairs(profiles) do
     local layout = assertVisibleLayout(profile)
+    assert(layout.zoomIn and layout.zoomOut and layout.shellDock,
+      'gameplay zoom controls and shell dock must fit supported profiles')
     assert(layout.target >= 48, 'gameplay target must be at least 48')
     assert(layout.joystickHost.width == profile.joystick,
       'gameplay joystick size must follow profile')
@@ -952,10 +1122,13 @@ initializeGameplay = function(initialProfile, atomicProfile)
         joystickHost = partialHud:getChildById('joystickHost'),
         hotbar = partialHud:getChildById('hotbar'),
         actions = partialHud:getChildById('actions'),
-        drawerHandle = partialHud:getChildById('drawerHandle')
+        drawerHandle = partialHud:getChildById('drawerHandle'),
+        zoomOut = partialHud:getChildById('zoomOut'),
+        zoomIn = partialHud:getChildById('zoomIn')
       }
       assert(created.status and created.menu and created.joystickHost and
-        created.hotbar and created.actions and created.drawerHandle,
+        created.hotbar and created.actions and created.drawerHandle and
+        created.zoomOut and created.zoomIn,
         'mobile HUD is incomplete')
       return created
     end,
@@ -975,7 +1148,20 @@ initializeGameplay = function(initialProfile, atomicProfile)
   hotbar = shell.hotbar
   actions = shell.actions
   drawerHandle = shell.drawerHandle
+  zoomOutButton = shell.zoomOut
+  zoomInButton = shell.zoomIn
   configureInputTarget(menu)
+  menu.onClick = function()
+    return openMenu()
+  end
+  configureInputTarget(zoomOutButton)
+  zoomOutButton.onClick = function()
+    return zoomMap(-1)
+  end
+  configureInputTarget(zoomInButton)
+  zoomInButton.onClick = function()
+    return zoomMap(1)
+  end
 
   if MobileStatus then
     statusAdapter = MobileStatus.create()
@@ -1238,10 +1424,14 @@ function terminate()
   hotbar = nil
   actions = nil
   drawerHandle = nil
+  zoomOutButton = nil
+  zoomInButton = nil
+  currentLayout = nil
   gameActive = false
   controlsFit = false
   controlsSuppressed = false
   initialized = false
   lastProfileKey = nil
+  publishShellDock()
   terminating = false
 end

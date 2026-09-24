@@ -128,11 +128,9 @@ UIWidget
     id: menu
     text: MENU
 
-  MobileHudSurface
+  UIWidget
     id: joystickHost
-    background-color: #0b162370
-    mobile-overlay-base: #0b1623
-    border-color: #8fa9ba44
+    focusable: false
     phantom: true
 
   UIWidget
@@ -164,3 +162,13 @@ UIWidget
   MobileHudTarget
     id: drawerHandle
     text: >
+
+  MobileHudTarget
+    id: zoomOut
+    text: -
+    font: terminus-14px-bold
+
+  MobileHudTarget
+    id: zoomIn
+    text: +
+    font: terminus-14px-bold
