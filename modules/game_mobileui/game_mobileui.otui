@@ -14,7 +14,7 @@ UIWidget
       anchors.left: parent.left
       anchors.top: parent.top
       margin-left: 8
-      margin-top: 3
+      margin-top: 2
       width: 78
       text: STATUS
       color: #d7e2eb
@@ -26,7 +26,7 @@ UIWidget
       id: level
       anchors.top: parent.top
       anchors.left: parent.left
-      margin-top: 3
+      margin-top: 2
       width: 30
       color: #b9c9d5
       font: verdana-8px-rounded
@@ -37,7 +37,7 @@ UIWidget
       id: vocation
       anchors.top: parent.top
       anchors.left: parent.left
-      margin-top: 3
+      margin-top: 2
       width: 72
       color: #b9c9d5
       font: verdana-8px-rounded
@@ -48,7 +48,7 @@ UIWidget
       id: stamina
       anchors.top: parent.top
       anchors.left: parent.left
-      margin-top: 3
+      margin-top: 2
       width: 48
       color: #b9c9d5
       font: verdana-8px-rounded
@@ -63,7 +63,7 @@ UIWidget
       anchors.top: parent.top
       margin-left: 8
       margin-right: 4
-      margin-top: 18
+      margin-top: 16
       percent: 100
       background-color: #641f29dd
       mobile-overlay-base: #641f29
@@ -79,10 +79,10 @@ UIWidget
     Label
       id: soul
       width: 43
-      height: 10
+      height: 13
       anchors.top: parent.top
       anchors.right: parent.right
-      margin-top: 18
+      margin-top: 16
       margin-right: 5
       color: #d9c3e9
       font: verdana-8px-rounded
@@ -97,7 +97,7 @@ UIWidget
       anchors.bottom: parent.bottom
       margin-left: 8
       margin-right: 4
-      margin-bottom: 5
+      margin-bottom: 3
       percent: 100
       background-color: #245477dd
       mobile-overlay-base: #245477
@@ -113,11 +113,11 @@ UIWidget
     Label
       id: capacity
       width: 43
-      height: 10
+      height: 13
       anchors.right: parent.right
       anchors.bottom: parent.bottom
       margin-right: 5
-      margin-bottom: 5
+      margin-bottom: 3
       color: #d7d9c3
       font: verdana-8px-rounded
       text-align: right

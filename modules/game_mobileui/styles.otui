@@ -61,7 +61,7 @@ MobileHotbarSlot < MobileHudTarget
     visible: false
 
 MobileHudStatusBar < MobileOverlayProgressBar
-  height: 7
+  height: 13
   background-color: #02060acc
   mobile-overlay-base: #02060a
   border-width: 1
