@@ -54,6 +54,17 @@ end
 function selectVersionAndRestart(version)
   assert(isKnownVersion(version), 'unknown mobile UI version')
   g_settings.set('mobile-ui-version', version)
+  g_settings.save()
+  if g_platform.isBrowser and g_platform.isBrowser() then
+    local recoveryUrl = type(WebClientConfig) == 'table' and
+      WebClientConfig.mobileUiLegacyUrl or nil
+    if version == 'legacy' and type(recoveryUrl) == 'string' and
+        recoveryUrl ~= '' and g_platform.openUrl and
+        g_platform.openUrl(recoveryUrl, true) then
+      return true
+    end
+    return false
+  end
   if not g_app.restart then
     return false
   end

@@ -95,7 +95,21 @@ ticks_t Platform::getFileModificationTime(std::string file)
 
 bool Platform::openUrl(std::string url, bool now)
 {
-    return true;
+    if (!now)
+        return true;
+
+    return MAIN_THREAD_EM_ASM_INT({
+        try {
+            const target = new URL(UTF8ToString($0), window.location.href);
+            if (target.origin !== window.location.origin ||
+                target.pathname !== window.location.pathname)
+                return 0;
+            window.location.assign(target.href);
+            return 1;
+        } catch (_) {
+            return 0;
+        }
+    }, url.c_str()) == 1;
 }
 
 bool Platform::openDir(std::string path, bool now)
