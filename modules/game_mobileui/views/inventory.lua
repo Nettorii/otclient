@@ -27,8 +27,6 @@ local PVP_MODES = {
 }
 
 local BASE_ROOT_HEIGHT = 760
-local BASE_CONTAINER_SECTION_HEIGHT = 242
-local BASE_CONTAINER_DETAILS_HEIGHT = 158
 local BASE_CONTAINER_ITEMS_HEIGHT = 52
 
 local function setActive(button, active)
@@ -319,15 +317,8 @@ function View:_renderContainerItems(snapshot)
   local width = math.max(48, panel:getWidth())
   local columns = math.max(1, math.floor((width + 4) / 52))
   local rows = math.max(1, math.ceil(snapshot.capacity / columns))
-  local itemsHeight = rows * 52
-  panel:setHeight(itemsHeight)
-  self:_widget('containerDetails'):setHeight(104 + itemsHeight)
-  self:_widget('containersSection'):setHeight(184 + itemsHeight)
-  local contentHeight = math.max(BASE_ROOT_HEIGHT, 650 + itemsHeight)
-  self.root:setHeight(contentHeight)
-  if self.holder then
-    self.holder:setHeight(contentHeight)
-  end
+  panel:setHeight(rows * 52)
+  self:_fitContainerHeights()
   for _, itemSnapshot in ipairs(snapshot.items) do
     local item = g_ui.createWidget('MobileContainerItem', panel)
     item:setId('containerItem' .. itemSnapshot.slot)
@@ -339,6 +330,30 @@ function View:_renderContainerItems(snapshot)
   end
 end
 
+function View:_fitContainerHeights()
+  local details = self:_widget('containerDetails')
+  details:setHeight(MobileDrawer.contentHeight(details))
+  local section = self:_widget('containersSection')
+  section:setHeight(MobileDrawer.contentHeight(section))
+  local contentHeight = MobileDrawer.contentHeight(self.root)
+  self.root:setHeight(contentHeight)
+  if self.holder then
+    self.holder:setHeight(contentHeight)
+  end
+end
+
+function View:_revealContainer()
+  local area = self.holder and self.holder:getParent()
+  local scrollBar = area and area.verticalScrollBar
+  local details = self:_widget('containerDetails')
+  if not scrollBar or not details or not details:isVisible() then
+    return
+  end
+  area:updateScrollBars()
+  scrollBar:setValue(scrollBar:getValue() +
+    details:getY() - area:getPaddingRect().y)
+end
+
 function View:_resetContainerLayout()
   local panel = self:_widget('containerItems')
   for _, item in ipairs(self.containerItems) do
@@ -347,14 +362,7 @@ function View:_resetContainerLayout()
   self.containerItems = {}
   panel:destroyChildren()
   panel:setHeight(BASE_CONTAINER_ITEMS_HEIGHT)
-  self:_widget('containerDetails'):setHeight(
-    BASE_CONTAINER_DETAILS_HEIGHT)
-  self:_widget('containersSection'):setHeight(
-    BASE_CONTAINER_SECTION_HEIGHT)
-  self.root:setHeight(BASE_ROOT_HEIGHT)
-  if self.holder then
-    self.holder:setHeight(BASE_ROOT_HEIGHT)
-  end
+  self:_fitContainerHeights()
 end
 
 function View:_renderContainers()
@@ -392,6 +400,7 @@ function View:_renderContainers()
   end
 
   local page = active.page
+  self:_widget('containerPager'):setVisible(page.enabled == true)
   self:_widget('containerPage'):setText(
     string.format('%d / %d', page.current, page.total))
   local previous = self:_widget('containerPrevious')
@@ -427,6 +436,9 @@ function View:_onContainers(snapshots, change)
     self.activeContainerId = nil
   end
   self:_renderContainers()
+  if change and change.type == 'open' then
+    self:_revealContainer()
+  end
 end
 
 function View:onShow()

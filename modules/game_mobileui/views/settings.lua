@@ -254,6 +254,7 @@ function View:create(parent)
   self.holder = parent
   self.root = g_ui.createWidget('MobileSettingsView', parent)
   self.root:setWidth(math.max(0, parent:getWidth()))
+  self.root:setHeight(MobileDrawer.contentHeight(self.root))
   self.holder:setHeight(self.root:getHeight())
   self:_configureMobileControls()
   self:_configureCategories()

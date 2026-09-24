@@ -124,6 +124,7 @@ MobileContainerSection < Panel
         text: X
 
     Panel
+      id: containerPager
       height: 48
       phantom: false
       layout:

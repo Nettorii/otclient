@@ -8,7 +8,7 @@ MobileDrawerNavigationButton < MobileOverlayButton
   border-color: #7891a455
   color: #dbe6ee
   font: verdana-11px-antialised
-  text-align: bottom
+  text-align: center
   focusable: false
   phantom: false
   $hover:
@@ -18,6 +18,23 @@ MobileDrawerNavigationButton < MobileOverlayButton
   $disabled:
     border-color: #9fc0d699
     color: #ffffff
+
+MobileDrawerCloseButton < MobileOverlayButton
+  size: 48 48
+  background-color: #101c29ee
+  mobile-overlay-base: #101c29
+  border-width: 1
+  border-color: #7891a455
+  color: #dbe6ee
+  font: verdana-11px-antialised
+  text: X
+  text-align: center
+  focusable: false
+  phantom: false
+  $hover:
+    border-color: #8fa9ba88
+  $pressed:
+    border-color: #9fc0d699
 
 MobileDrawerViewHost < Panel
   min-height: 1
@@ -54,11 +71,19 @@ MobileDrawerBackdrop < MobileOverlayPanel
       border-color-bottom: #7891a466
       phantom: false
 
+      MobileDrawerCloseButton
+        id: drawerClose
+        anchors.right: parent.right
+        anchors.verticalCenter: parent.verticalCenter
+
       Label
         id: drawerTitle
-        anchors.fill: parent
+        anchors.left: parent.left
+        anchors.top: parent.top
+        anchors.bottom: parent.bottom
+        anchors.right: drawerClose.left
         margin-left: 14
-        margin-right: 14
+        margin-right: 8
         color: #e5edf4
         font: verdana-11px-antialised
         text-align: left

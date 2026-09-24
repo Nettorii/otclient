@@ -90,6 +90,22 @@ function MobileDrawer.computeGeometry(profile)
   }
 end
 
+function MobileDrawer.contentHeight(widget)
+  local layout = widget:getLayout()
+  if layout then
+    layout:update()
+  end
+  local top = widget:getY()
+  local bottom = widget:getPaddingTop()
+  for _, child in ipairs(widget:getChildren()) do
+    if child:isExplicitlyVisible() then
+      bottom = math.max(bottom,
+        child:getY() - top + child:getHeight() + child:getMarginBottom())
+    end
+  end
+  return bottom + widget:getPaddingBottom()
+end
+
 function MobileDrawer.runSelfTests()
   local compact = MobileDrawer.computeGeometry({
     class = 'compact',
@@ -798,6 +814,18 @@ function Host:_ensureBackdrop(profile)
   end
 
   self:_bindGestureWidget(self.surface)
+  local closeButton = backdrop:recursiveGetChildById('drawerClose')
+  if closeButton then
+    closeButton.onClick = function()
+      if self.terminated or self.backdrop ~= backdrop or
+          self.gesture.suppressClick then
+        return true
+      end
+      self:close()
+      return true
+    end
+    self:_bindGestureWidget(closeButton)
+  end
   local navigationRendered, navigationError =
     pcall(self._renderNavigation, self)
   if not navigationRendered then
