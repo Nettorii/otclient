@@ -11,8 +11,8 @@ function runActivationSelfTests()
     'persisted v2 must be used without runtime config')
   assert(resolveMobileUiVersion(true, 'invalid', 'v2') == 'v2',
     'invalid runtime config must fall back to persisted config')
-  assert(resolveMobileUiVersion(true, nil, nil) == 'legacy',
-    'mobile rollout default must remain legacy')
+  assert(resolveMobileUiVersion(true, nil, nil) == 'v2',
+    'mobile rollout default must be v2')
 end
 
 local function isKnownVersion(version)
@@ -29,7 +29,7 @@ resolveMobileUiVersion = function(isMobile, runtimeVersion, persistedVersion)
   if isKnownVersion(persistedVersion) then
     return persistedVersion
   end
-  return 'legacy'
+  return 'v2'
 end
 
 local function configuredVersion()
@@ -49,6 +49,16 @@ end
 
 function isV2Enabled()
   return configuredVersion() == 'v2'
+end
+
+function selectVersionAndRestart(version)
+  assert(isKnownVersion(version), 'unknown mobile UI version')
+  g_settings.set('mobile-ui-version', version)
+  if not g_app.restart then
+    return false
+  end
+  g_app.restart()
+  return true
 end
 
 function init()

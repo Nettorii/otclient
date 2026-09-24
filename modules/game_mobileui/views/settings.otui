@@ -120,7 +120,7 @@ MobileSettingsOptionSheet < Panel
     spacing: 4
 
 MobileSettingsView < Panel
-  height: 554
+  height: 616
   anchors.left: parent.left
   anchors.right: parent.right
   focusable: false
@@ -144,6 +144,10 @@ MobileSettingsView < Panel
   MobileSettingsTouchButton
     id: mobileSettingsReset
     text: Reset mobile controls
+
+  MobileSettingsTouchButton
+    id: mobileSettingsUseLegacy
+    text: Use legacy mobile UI (reload)
 
   MobileSettingsSectionLabel
     text: More settings

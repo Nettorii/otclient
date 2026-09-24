@@ -125,6 +125,9 @@ function View:_configureMobileControls()
     end
     return true
   end
+  self:_widget('mobileSettingsUseLegacy').onClick = function()
+    return self.mobileUi.selectVersionAndRestart('legacy')
+  end
 end
 
 function View:_closeOwnedModal()
