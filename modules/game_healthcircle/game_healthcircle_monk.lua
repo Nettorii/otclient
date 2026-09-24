@@ -63,12 +63,11 @@ local function refreshMonkDynamicOpacity()
 end
 
 function initMonkWidgets()
-    local mapPanel = modules.game_interface.getMapPanel()
-    monkCircleBackground = g_ui.createWidget('MonkCircleBackground', mapPanel)
-    monkHealthCircle = g_ui.createWidget('MonkHealthCircle', mapPanel)
-    monkSereneCircle = g_ui.createWidget('MonkSereneCircle', mapPanel)
+    monkCircleBackground = g_ui.createWidget('MonkCircleBackground', circleParent())
+    monkHealthCircle = g_ui.createWidget('MonkHealthCircle', circleParent())
+    monkSereneCircle = g_ui.createWidget('MonkSereneCircle', circleParent())
     for i = 1, 5 do
-        local slot = g_ui.createWidget('MonkHarmonySlot', mapPanel)
+        local slot = g_ui.createWidget('MonkHarmonySlot', circleParent())
         slot:setImageSource('/data/images/game/healthcircle/left/default-slot-' .. i .. '-monk')
         slot:setVisible(false)
         monkHarmonySlots[i] = slot

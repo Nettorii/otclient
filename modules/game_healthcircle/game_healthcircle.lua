@@ -28,6 +28,26 @@ manaShieldCircleOffsetX = -52
 manaShieldCircleOffsetY = 7
 
 optionPanel = nil
+mobileCircleHolder = nil
+
+-- Mobile UI v2 shows HP/MP in its status bar; the circles would cover the map,
+-- so there they live in a permanently hidden holder. Everywhere else they are
+-- parented to the map panel as before.
+function circleParent()
+    local mobileUi = modules.client_mobileui
+    if not (g_platform.isMobile() and mobileUi and mobileUi.isV2Enabled and
+            mobileUi.isV2Enabled()) then
+        return mapPanel
+    end
+    if not mobileCircleHolder or mobileCircleHolder:isDestroyed() then
+        mobileCircleHolder = g_ui.createWidget('UIWidget', mapPanel)
+        mobileCircleHolder:setId('mobileHealthCircleHolder')
+        mobileCircleHolder:setPhantom(true)
+        mobileCircleHolder:setFocusable(false)
+        mobileCircleHolder:hide()
+    end
+    return mobileCircleHolder
+end
 
 isHealthCircle = not g_settings.getBoolean('healthcircle_hpcircle')
 isManaCircle = not g_settings.getBoolean('healthcircle_mpcircle')
@@ -45,17 +65,17 @@ opacityCircle = g_settings.getNumber('healthcircle_opacity', 0.35)
 
 function init()
     g_ui.importStyle("game_healthcircle.otui")
-    healthCircle = g_ui.createWidget('HealthCircle', mapPanel)
-    manaCircle = g_ui.createWidget('ManaCircle', mapPanel)
-    manaShieldCircle = g_ui.createWidget('ManaShieldCircle', mapPanel)
-    expCircle = g_ui.createWidget('ExpCircle', mapPanel)
-    skillCircle = g_ui.createWidget('SkillCircle', mapPanel)
+    healthCircle = g_ui.createWidget('HealthCircle', circleParent())
+    manaCircle = g_ui.createWidget('ManaCircle', circleParent())
+    manaShieldCircle = g_ui.createWidget('ManaShieldCircle', circleParent())
+    expCircle = g_ui.createWidget('ExpCircle', circleParent())
+    skillCircle = g_ui.createWidget('SkillCircle', circleParent())
 
-    healthCircleFront = g_ui.createWidget('HealthCircleFront', mapPanel)
-    manaCircleFront = g_ui.createWidget('ManaCircleFront', mapPanel)
-    manaShieldCircleFront = g_ui.createWidget('ManaShieldCircleFront', mapPanel)
-    expCircleFront = g_ui.createWidget('ExpCircleFront', mapPanel)
-    skillCircleFront = g_ui.createWidget('SkillCircleFront', mapPanel)
+    healthCircleFront = g_ui.createWidget('HealthCircleFront', circleParent())
+    manaCircleFront = g_ui.createWidget('ManaCircleFront', circleParent())
+    manaShieldCircleFront = g_ui.createWidget('ManaShieldCircleFront', circleParent())
+    expCircleFront = g_ui.createWidget('ExpCircleFront', circleParent())
+    skillCircleFront = g_ui.createWidget('SkillCircleFront', circleParent())
 
     imageSizeBroad = healthCircle:getHeight()
     imageSizeThin = healthCircle:getWidth()
@@ -133,6 +153,10 @@ function terminate()
     -- @ Destroy MONK
     terminateMonkWidgets()
     -- @
+    if mobileCircleHolder and not mobileCircleHolder:isDestroyed() then
+        mobileCircleHolder:destroy()
+    end
+    mobileCircleHolder = nil
     terminateOnHpAndMpChange()
     terminateOnGeometryChange()
     terminateOnLoginChange()
