@@ -209,6 +209,13 @@ function online()
             mainFpsPanel = g_ui.createWidget("testPingPanel", PingWidget:getChildByIndex(2))
             mainFpsPanel:setId("fps")
             fpsPanel2 = mainFpsPanel:getChildByIndex(2)
+
+            -- mobile UI v2 draws its status surface over this map corner
+            local mobileUi = modules.client_mobileui
+            if g_platform.isMobile() and mobileUi and mobileUi.isV2Enabled and
+                mobileUi.isV2Enabled() then
+                PingWidget:hide()
+            end
         end
 
         if showPing and pingFeatureAvailable then
