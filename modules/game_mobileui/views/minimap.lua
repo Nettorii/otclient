@@ -147,6 +147,7 @@ function View:_showFlagModal(position)
       return false
     end
     self.map:addFlag(position, selectedIcon, description:getText())
+    self:_restoreFlagInput()
     close()
     return true
   end

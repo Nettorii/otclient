@@ -89,6 +89,7 @@ function View:_showOwnedModal(title, body, handlers)
   local generation = self.modalGeneration
   local current = self.modalSession
   if current and current.handle and current.handle:isOpen() and
+      not handlers.buttons and
       type(current.handle.setBody) == 'function' and
       current.handle.title and
       type(current.handle.title.setText) == 'function' then
@@ -125,7 +126,7 @@ function View:_showOwnedModal(title, body, handlers)
   local handle = mobileUi.showModal({
     title = title,
     body = body,
-    buttons = {},
+    buttons = handlers.buttons or {},
     onEnter = function()
       if self.modalSession == session and session.onEnter then
         return session.onEnter()
@@ -278,8 +279,6 @@ function View:_showEditVipForm(id)
   end
   local snapshot = self.vip.getVipSnapshot()
   local body = createForm()
-  local save = addFormAction(body, 'formSave', tr('Save'))
-  local cancel = addFormAction(body, 'formCancel', tr('Cancel'))
   addLabel(body, 'formVipName', entry.name)
   addLabel(body, 'formDescriptionLabel', tr('Description'))
   local description = addTextField(
@@ -336,13 +335,18 @@ function View:_showEditVipForm(id)
         id, description:getText(), tonumber(icon:getText()), notify, groups)
     end)
   end
-  save.onClick = saveForm
-  cancel.onClick = function()
+  local function cancelForm()
     if session then session.close(generation) end
     return true
   end
   session, generation = self:_showOwnedModal(
-    tr('Edit %s', entry.name), body, { onEnter = saveForm })
+    tr('Edit %s', entry.name), body, {
+      onEnter = saveForm,
+      buttons = {
+        { id = 'formSave', text = tr('Save'), callback = saveForm },
+        { id = 'formCancel', text = tr('Cancel'), callback = cancelForm }
+      }
+    })
   return session ~= nil
 end
 
