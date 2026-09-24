@@ -26,56 +26,6 @@ local function reloadModulesForLocale()
     end
 end
 
-local function createTouchScroller(scrollBar)
-    local lastY
-    local dragDistance = 0
-    local dragged = false
-
-    local function onMousePress(widget, position, button)
-        if button ~= MouseLeftButton then return false end
-        lastY = position.y
-        dragDistance = 0
-        dragged = false
-        return false
-    end
-
-    local function onMouseMove(widget, position)
-        if not lastY or not g_mouse.isPressed(MouseLeftButton) then
-            return false
-        end
-
-        local delta = lastY - position.y
-        lastY = position.y
-        dragDistance = dragDistance + math.abs(delta)
-        if dragDistance >= 6 then
-            dragged = true
-            scrollBar:setValue(scrollBar:getValue() + delta)
-        end
-        return dragged
-    end
-
-    local function onMouseRelease(widget, position, button)
-        if button ~= MouseLeftButton then return false end
-        lastY = nil
-        return dragged
-    end
-
-    return {
-        bind = function(widget)
-            connect(widget, {
-                onMousePress = onMousePress,
-                onMouseMove = onMouseMove,
-                onMouseRelease = onMouseRelease
-            })
-        end,
-        consumeClick = function()
-            local consumed = dragged
-            dragged = false
-            return consumed
-        end
-    }
-end
-
 function sendLocale(localeName)
     local protocolGame = g_game.getProtocolGame()
     if protocolGame then
@@ -95,7 +45,7 @@ function createWindow()
     local touchScroller
     if mobileV2 then
         local scrollBar = localesWindow:recursiveGetChildById('localesScrollBar')
-        touchScroller = createTouchScroller(scrollBar)
+        touchScroller = mobileUiModule().createTouchScroller(scrollBar, 'y')
         touchScroller.bind(localesPanel)
     end
 
@@ -105,7 +55,7 @@ function createWindow()
         widget:setImageSource('/images/flags/' .. name .. '')
         widget:setText(locale.languageName)
         widget.onClick = function()
-            if touchScroller and touchScroller.consumeClick() then return end
+            if touchScroller and touchScroller.consume() then return end
             selectFirstLocale(name)
         end
         if touchScroller then touchScroller.bind(widget) end

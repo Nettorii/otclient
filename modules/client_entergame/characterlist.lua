@@ -49,10 +49,13 @@ local function windowChild(id)
 end
 
 MobileScrollGesture = MobileScrollGesture or {}
+-- A finger wobbles several pixels during a tap, so a press only becomes a
+-- scroll once it has moved this many logical pixels away from where it began.
+MobileScrollGesture.TOUCH_SLOP = 12
 
 function MobileScrollGesture.create(scrollBar)
+    local originY
     local lastY
-    local dragDistance = 0
     local dragged = false
     local active = false
     local rollbacks = setmetatable({}, { __mode = 'k' })
@@ -62,8 +65,8 @@ function MobileScrollGesture.create(scrollBar)
         if button ~= MouseLeftButton then return false end
         if not active then
             active = true
+            originY = position.y
             lastY = position.y
-            dragDistance = 0
             dragged = false
             rollbackStates = setmetatable({}, { __mode = 'k' })
         end
@@ -79,13 +82,14 @@ function MobileScrollGesture.create(scrollBar)
             return false
         end
 
-        local delta = lastY - position.y
-        lastY = position.y
-        dragDistance = dragDistance + math.abs(delta)
-        if dragDistance >= 6 then
+        if not dragged and
+            math.abs(position.y - originY) >= MobileScrollGesture.TOUCH_SLOP then
             dragged = true
-            scrollBar:setValue(scrollBar:getValue() + delta)
         end
+        if dragged then
+            scrollBar:setValue(scrollBar:getValue() + lastY - position.y)
+        end
+        lastY = position.y
         return dragged
     end
 
@@ -110,11 +114,14 @@ function MobileScrollGesture.create(scrollBar)
     return {
         bind = function(widget, rollback)
             rollbacks[widget] = rollback
+            -- UIButton:onMouseRelease returns true on a tap and would hide the
+            -- release from a handler queued after it, leaving the next touch to
+            -- start where this one ended.
             connect(widget, {
                 onMousePress = onMousePress,
                 onMouseMove = onMouseMove,
                 onMouseRelease = onMouseRelease
-            })
+            }, true)
         end,
         bindDeferredPress = function(widget, tapAction)
             widget.onMousePress = function(self, position, button)

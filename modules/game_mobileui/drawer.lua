@@ -1,5 +1,9 @@
 MobileDrawer = {}
 
+-- A finger wobbles several pixels during a tap, so a press only becomes a
+-- scroll once it has moved this many logical pixels away from where it began.
+local TOUCH_SLOP = 12
+
 local NAVIGATION_ORDER = {
   'inventory',
   'character',
@@ -288,7 +292,7 @@ function Host:_moveGesture(position, scrollBar, scrollAxis)
   local deltaX = x - self.gesture.startX
   local deltaY = y - self.gesture.startY
   local movement = math.max(math.abs(deltaX), math.abs(deltaY))
-  if movement >= 6 then
+  if movement >= TOUCH_SLOP then
     self.gesture.dragged = true
     self.gesture.suppressClick = true
   end

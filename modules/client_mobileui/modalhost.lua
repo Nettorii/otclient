@@ -120,33 +120,41 @@ local function isMouseButtonBlocked(button)
   return button == MouseLeftButton or button == MouseRightButton
 end
 
-local function createBodyScroller(scrollBar)
-  local lastY
-  local dragDistance = 0
+-- A finger wobbles several pixels during a tap, so a press only becomes a
+-- scroll once it has moved TOUCH_SLOP logical pixels away from where it began.
+TOUCH_SLOP = 12
+
+function createTouchScroller(scrollBar, axis)
+  axis = axis == 'x' and 'x' or 'y'
+  local boundFlag = axis == 'x' and 'mobileModalFooterScrollBound' or
+    'mobileModalScrollBound'
+  local origin
+  local last
   local dragged = false
 
   local function onMousePress(_, position, button)
     if button ~= MouseLeftButton then
       return false
     end
-    lastY = position.y
-    dragDistance = 0
+    origin = position[axis]
+    last = origin
     dragged = false
     return false
   end
 
   local function onMouseMove(_, position)
-    if not lastY or not g_mouse.isPressed(MouseLeftButton) then
+    if not origin or not g_mouse.isPressed(MouseLeftButton) then
       return false
     end
 
-    local delta = lastY - position.y
-    lastY = position.y
-    dragDistance = dragDistance + math.abs(delta)
-    if dragDistance >= 6 then
+    local value = position[axis]
+    if not dragged and math.abs(value - origin) >= TOUCH_SLOP then
       dragged = true
-      scrollBar:setValue(scrollBar:getValue() + delta)
     end
+    if dragged then
+      scrollBar:setValue(scrollBar:getValue() + last - value)
+    end
+    last = value
     return dragged
   end
 
@@ -154,83 +162,24 @@ local function createBodyScroller(scrollBar)
     if button ~= MouseLeftButton then
       return false
     end
-    lastY = nil
+    origin = nil
     return dragged
   end
 
   local scroller = {}
 
   function scroller.bind(widget)
-    if not widget or widget:isDestroyed() or widget.mobileModalScrollBound then
+    if not widget or widget:isDestroyed() or widget[boundFlag] then
       return
     end
-    widget.mobileModalScrollBound = true
+    widget[boundFlag] = true
+    -- UIButton:onMouseRelease returns true on a tap and would hide the release
+    -- from a handler queued after it, leaving the next touch to start here.
     connect(widget, {
       onMousePress = onMousePress,
       onMouseMove = onMouseMove,
       onMouseRelease = onMouseRelease
-    })
-  end
-
-  function scroller.consume()
-    local consumed = dragged
-    dragged = false
-    return consumed
-  end
-
-  return scroller
-end
-
-local function createFooterScroller(scrollBar)
-  local lastX
-  local dragDistance = 0
-  local dragged = false
-
-  local function onMousePress(_, position, button)
-    if button ~= MouseLeftButton then
-      return false
-    end
-    lastX = position.x
-    dragDistance = 0
-    dragged = false
-    return false
-  end
-
-  local function onMouseMove(_, position)
-    if not lastX or not g_mouse.isPressed(MouseLeftButton) then
-      return false
-    end
-
-    local delta = lastX - position.x
-    lastX = position.x
-    dragDistance = dragDistance + math.abs(delta)
-    if dragDistance >= 6 then
-      dragged = true
-      scrollBar:setValue(scrollBar:getValue() + delta)
-    end
-    return dragged
-  end
-
-  local function onMouseRelease(_, _, button)
-    if button ~= MouseLeftButton then
-      return false
-    end
-    lastX = nil
-    return dragged
-  end
-
-  local scroller = {}
-
-  function scroller.bind(widget)
-    if not widget or widget:isDestroyed() or widget.mobileModalFooterScrollBound then
-      return
-    end
-    widget.mobileModalFooterScrollBound = true
-    connect(widget, {
-      onMousePress = onMousePress,
-      onMouseMove = onMouseMove,
-      onMouseRelease = onMouseRelease
-    })
+    }, true)
   end
 
   function scroller.consume()
@@ -403,8 +352,8 @@ function showModal(config)
   local bodyScrollBar = shell.bodyScrollBar
   local footer = shell.footer
   local footerScrollBar = shell.footerScrollBar
-  local bodyScroller = createBodyScroller(bodyScrollBar)
-  local footerScroller = createFooterScroller(footerScrollBar)
+  local bodyScroller = createTouchScroller(bodyScrollBar, 'y')
+  local footerScroller = createTouchScroller(footerScrollBar, 'x')
   local bodyWidget
   local buttons = {}
   local handle = {}
