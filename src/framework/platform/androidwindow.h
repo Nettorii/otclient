@@ -29,6 +29,7 @@
 #include <android/native_window_jni.h>
 #include <jni.h>
 #include <EGL/egl.h>
+#include <mutex>
 #include <queue>
 #include <game-activity/native_app_glue/android_native_app_glue.h>
 
@@ -132,7 +133,7 @@ public:
     std::string getPlatformType();
 
     void initializeAndroidApp(android_app* app);
-    void nativeCommitText(jstring);
+    void nativeCommitText(const std::string& text);
     void onNativeKeyDown(int);
     void onNativeKeyUp(int);
     void dispatchSystemBack();
@@ -147,6 +148,8 @@ private:
     EGLDisplay m_eglDisplay;
     EGLSurface m_eglSurface;
 
+    // Also pushed from the Java UI thread (IME text, FakeEditText keys).
+    std::mutex m_eventsMutex;
     std::queue<NativeEvent> m_events;
     NativeEvent m_currentEvent;
 
@@ -158,6 +161,7 @@ private:
     bool m_hasBaseDisplayDensity{ false };
 
     void updateDisplayDensityFromSystem(float screenDensity);
+    void pushEvent(NativeEvent event);
 };
 
 extern "C" {

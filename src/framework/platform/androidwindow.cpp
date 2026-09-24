@@ -205,9 +205,16 @@ void AndroidWindow::terminate() {
 
 void AndroidWindow::poll() {
     handleNativeEvents();
+    g_androidManager.applyPendingJniState();
 
-    while( !m_events.empty() ) {
-        m_currentEvent = m_events.front();
+    std::queue<NativeEvent> events;
+    {
+        std::scoped_lock lock(m_eventsMutex);
+        std::swap(events, m_events);
+    }
+
+    while( !events.empty() ) {
+        m_currentEvent = events.front();
 
         switch( m_currentEvent.type ) {
             case TEXTINPUT:
@@ -227,7 +234,7 @@ void AndroidWindow::poll() {
                 break;
         }
 
-        m_events.pop();
+        events.pop();
     }
 
     fireKeysPress();
@@ -418,19 +425,19 @@ void AndroidWindow::onNativeTouch(int actionType,
 
     EventType type = NativeEvent::getEventTypeFromInt(actionType);
 
-    m_events.push(NativeEvent(type, x, y));
+    pushEvent(NativeEvent(type, x, y));
 }
 
 void AndroidWindow::onNativeKeyDown( int keyCode ) {
     KeyCode key = NativeEvent::getKeyCodeFromInt(keyCode);
 
-    m_events.push(NativeEvent(KEY_DOWN, key));
+    pushEvent(NativeEvent(KEY_DOWN, key));
 }
 
 void AndroidWindow::onNativeKeyUp( int keyCode ) {
     KeyCode key = NativeEvent::getKeyCodeFromInt(keyCode);
 
-    m_events.push(NativeEvent(KEY_UP, key));
+    pushEvent(NativeEvent(KEY_UP, key));
 }
 
 void AndroidWindow::dispatchSystemBack() {
@@ -438,9 +445,13 @@ void AndroidWindow::dispatchSystemBack() {
     onNativeKeyUp(AKEYCODE_BACK);
 }
 
-void AndroidWindow::nativeCommitText(jstring jString) {
-    std::string text = g_androidManager.getStringFromJString(jString);
-    m_events.push(NativeEvent(TEXTINPUT, text));
+void AndroidWindow::nativeCommitText(const std::string& text) {
+    pushEvent(NativeEvent(TEXTINPUT, text));
+}
+
+void AndroidWindow::pushEvent(NativeEvent event) {
+    std::scoped_lock lock(m_eventsMutex);
+    m_events.push(std::move(event));
 }
 
 void AndroidWindow::handleNativeEvents() {
@@ -605,7 +616,7 @@ void AndroidWindow::processNativeInputEvents() {
 extern "C" {
 void Java_com_otclient_NativeInputConnection_nativeCommitText(
         JNIEnv* env, jobject obj, jstring text) {
-    ((AndroidWindow&) g_window).nativeCommitText(text);
+    ((AndroidWindow&) g_window).nativeCommitText(AndroidManager::getStringFromJString(env, text));
 }
 
 void Java_com_otclient_FakeEditText_onNativeKeyDown(

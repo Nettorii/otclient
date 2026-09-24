@@ -206,8 +206,16 @@ int main(const int argc, const char* argv[])
         g_logger.fatal("Unable to run script init.lua!");
     ALOGD("main: init.lua executed successfully");
 
+#ifdef ANDROID
+    g_androidManager.pendingJniState().setReady(true);
+#endif
+
     // the run application main loop
     g_app.run();
+
+#ifdef ANDROID
+    g_androidManager.pendingJniState().close();
+#endif
 
     // unload modules
     g_app.deinit();

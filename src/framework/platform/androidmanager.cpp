@@ -45,8 +45,23 @@ void AndroidManager::setAndroidApp(android_app* app) {
     m_app = app;
 }
 
-void AndroidManager::setAndroidManager(JNIEnv* env, jobject androidManager) {
-    JNIEnv* jniEnv = getJNIEnv();
+void AndroidManager::applyPendingJniState() {
+    const auto pending = m_pendingJniState.take();
+    if (pending.viewportMetrics) {
+        g_dispatcher.addEvent([metrics = *pending.viewportMetrics] {
+            g_window.setViewportMetrics(metrics);
+        });
+    }
+    if (pending.audioEnabled) {
+        g_dispatcher.addEvent([enabled = *pending.audioEnabled] {
+            g_sounds.setAudioEnabled(enabled);
+        });
+    }
+    if (pending.systemBack)
+        g_androidWindow.dispatchSystemBack();
+}
+
+void AndroidManager::setAndroidManager(JNIEnv* jniEnv, jobject androidManager) {
     jclass androidManagerJClass = jniEnv->GetObjectClass(androidManager);
     m_androidManagerJObject = jniEnv->NewGlobalRef(androidManager);
     m_midShowSoftKeyboard = jniEnv->GetMethodID(androidManagerJClass, "showSoftKeyboard", "()V");
@@ -150,8 +165,10 @@ std::string AndroidManager::getAppBaseDir() {
 }
 
 std::string AndroidManager::getStringFromJString(jstring text) {
-    JNIEnv* env = getJNIEnv();
+    return getStringFromJString(getJNIEnv(), text);
+}
 
+std::string AndroidManager::getStringFromJString(JNIEnv* env, jstring text) {
     const jchar* chars = env->GetStringChars(text, nullptr);
     const jsize length = env->GetStringLength(text);
 
@@ -204,20 +221,16 @@ void Java_com_otclient_AndroidManager_nativeInit(JNIEnv* env, jobject androidMan
 }
 
 void Java_com_otclient_AndroidManager_nativeSetAudioEnabled(JNIEnv*, jobject, jboolean enabled) {
-    g_sounds.setAudioEnabled(enabled);
+    g_androidManager.pendingJniState().setAudioEnabled(enabled);
 }
 
 void Java_com_otclient_AndroidManager_nativeSetViewportMetrics(
         JNIEnv*, jobject, jint left, jint top, jint right, jint bottom, jint keyboardHeight) {
-    g_dispatcher.addEvent([left, top, right, bottom, keyboardHeight] {
-        g_window.setViewportMetrics({left, top, right, bottom, keyboardHeight});
-    });
+    g_androidManager.pendingJniState().setViewportMetrics({left, top, right, bottom, keyboardHeight});
 }
 
 void Java_com_otclient_AndroidManager_nativeOnSystemBack(JNIEnv*, jobject) {
-    g_dispatcher.addEvent([] {
-        g_androidWindow.dispatchSystemBack();
-    });
+    g_androidManager.pendingJniState().requestSystemBack();
 }
 
 }

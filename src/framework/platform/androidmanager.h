@@ -27,12 +27,18 @@
 #include <game-activity/native_app_glue/android_native_app_glue.h>
 #include <string>
 
+#include "pendingjnistate.h"
+
 class AndroidManager {
 public:
     ~AndroidManager();
 
     void setAndroidApp(android_app*);
     void setAndroidManager(JNIEnv*, jobject);
+
+    PendingJniState& pendingJniState() { return m_pendingJniState; }
+    // Main thread only.
+    void applyPendingJniState();
 
     void showKeyboardSoft();
     void hideKeyboard();
@@ -48,6 +54,7 @@ public:
     void setClipboardText(const std::string& text);
 
     std::string getStringFromJString(jstring);
+    static std::string getStringFromJString(JNIEnv*, jstring);
     std::string getAppBaseDir();
 
     float getScreenDensity();
@@ -66,6 +73,8 @@ private:
     jmethodID m_midHideInputPreview;
     jmethodID m_midGetClipboardText;
     jmethodID m_midSetClipboardText;
+
+    PendingJniState m_pendingJniState;
 };
 
 extern AndroidManager g_androidManager;
