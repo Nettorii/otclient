@@ -2,12 +2,22 @@ local shortcutsWindow
 local shortcuts
 local shortcutIcons
 
+-- Mobile UI v2 keeps this module as the logic backend of its USE action but
+-- draws its own controls, so the legacy icon panel must never show there.
+local function legacyPanelAllowed()
+  local mobileUi = modules.client_mobileui
+  return not (mobileUi and mobileUi.isV2Enabled and mobileUi.isV2Enabled())
+end
+
 function init()
   if not g_platform.isMobile() then return end
 
   shortcutsWindow = g_ui.displayUI('shortcuts')
   shortcuts = shortcutsWindow.shortcuts
   shortcutIcons = shortcuts.shortcutIcons
+  if not legacyPanelAllowed() then
+    shortcutsWindow:hide()
+  end
 
   connect(g_game, {
     onGameStart = onGameStart,
@@ -30,7 +40,9 @@ function terminate()
 end
 
 function onGameStart()
-  shortcuts:show()
+  if legacyPanelAllowed() then
+    shortcuts:show()
+  end
 end
 
 function onGameEnd()
@@ -42,7 +54,9 @@ function hide()
 end
 
 function show()
-  shortcutsWindow:show()
+  if legacyPanelAllowed() then
+    shortcutsWindow:show()
+  end
 end
 
 function setupShortcuts()
