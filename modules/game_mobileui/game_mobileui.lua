@@ -31,6 +31,7 @@ local zoomOutButton
 local zoomInButton
 local currentLayout
 local lastShellDockMessage
+local pinchGesture
 
 local SHELL_DOCK_BUTTONS = 3
 
@@ -409,6 +410,10 @@ function cancelInput()
   cancelOwnedGestures()
 end
 
+function isPinchActive()
+  return pinchGesture ~= nil and pinchGesture:isActive()
+end
+
 local function profileKey(profile)
   profile = profile or {}
   local safe = profile.safe or {}
@@ -707,6 +712,9 @@ end
 
 local function onGameEnd()
   cancelOwnedGestures()
+  if pinchGesture then
+    pinchGesture:reset()
+  end
   if chatAdapter then
     chatAdapter:onGameEnd()
   end
@@ -1162,6 +1170,14 @@ initializeGameplay = function(initialProfile, atomicProfile)
   zoomInButton.onClick = function()
     return zoomMap(1)
   end
+  pinchGesture = MobilePinch.create({
+    accept = function(points)
+      return actionsAreActive() and MobilePinch.touchesOwnedByMap(
+        gameMapPanel(), points, g_ui.getPressedWidget())
+    end,
+    onBegin = cancelOwnedGestures,
+    onStep = zoomMap
+  })
 
   if MobileStatus then
     statusAdapter = MobileStatus.create()
@@ -1261,6 +1277,11 @@ initializeGameplay = function(initialProfile, atomicProfile)
       onFocusChange = function(focused)
         if focused == false then
           cancelOwnedGestures()
+        end
+      end,
+      onMultiTouch = function(phase, points)
+        if pinchGesture then
+          pinchGesture:handle(phase, points)
         end
       end
     }
@@ -1388,6 +1409,10 @@ function terminate()
   if windowCallbacks then
     disconnect(g_window, windowCallbacks)
     windowCallbacks = nil
+  end
+  if pinchGesture then
+    pinchGesture:reset()
+    pinchGesture = nil
   end
   if unsubscribeProfile then
     unsubscribeProfile()

@@ -104,8 +104,13 @@ local function mobileV2BrowserWindowIsUnfocused()
         not g_window.hasFocus()
 end
 
+local function mobilePinchIsActive()
+    local mobileUi = modules.game_mobileui
+    return mobileUi and mobileUi.isPinchActive and mobileUi.isPinchActive() or false
+end
+
 function UIGameMap:onMousePress()
-    if mobileV2BrowserWindowIsUnfocused() then
+    if mobileV2BrowserWindowIsUnfocused() or mobilePinchIsActive() then
         self:cancelPendingRelease()
         return true
     end
@@ -189,8 +194,12 @@ local function mobileV2InputBlocksMap(gameMap, mousePosition)
     return true
 end
 
+function UIGameMap:acceptsMobileTouchAt(mousePosition)
+    return isMobileV2Enabled() and not mobileV2InputBlocksMap(self, mousePosition)
+end
+
 function UIGameMap:onMouseRelease(mousePosition, mouseButton)
-    if mobileV2BrowserWindowIsUnfocused() then
+    if mobileV2BrowserWindowIsUnfocused() or mobilePinchIsActive() then
         self:cancelPendingRelease()
         return true
     end
