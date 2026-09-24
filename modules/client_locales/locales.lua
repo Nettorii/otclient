@@ -14,6 +14,18 @@ local function isMobileV2()
     return mobileUi and mobileUi.isV2Enabled and mobileUi.isV2Enabled() or false
 end
 
+local function reloadModulesForLocale()
+    if g_sounds then
+        g_sounds.stopAll()
+    end
+
+    g_modules.reloadModules()
+
+    if g_sounds and not g_game.isOnline() then
+        g_sounds.getChannel(SoundChannels.Music):enqueue('/client/sounds/startup', 3)
+    end
+end
+
 local function createTouchScroller(scrollBar)
     local lastY
     local dragDistance = 0
@@ -140,7 +152,7 @@ function selectFirstLocale(name)
         localesWindow = nil
     end
     if setLocale(name) then
-        g_modules.reloadModules()
+        reloadModulesForLocale()
     end
 end
 
@@ -152,7 +164,7 @@ end
 function onExtendedLocales(protocol, opcode, buffer)
     local locale = installedLocales[buffer]
     if locale and setLocale(locale.name) then
-        g_modules.reloadModules()
+        reloadModulesForLocale()
     end
 end
 
