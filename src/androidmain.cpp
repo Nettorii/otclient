@@ -23,7 +23,8 @@
 #ifdef ANDROID
 
 #include "framework/platform/androidwindow.h"
-#include <cstdlib>
+#include <game-activity/GameActivity.h>
+#include <unistd.h>
 
 extern "C" {
 int main(int argc, const char* argv[]);
@@ -43,7 +44,17 @@ void android_main(struct android_app* app) {
 
     const char* args[] = { "OTClient" };
     main(1, args);
-    std::exit(0);
+
+    // std::exit would run static destructors (ours and libhwui's) while the
+    // Java render threads still lock those mutexes, aborting the process.
+    app->onAppCmd = nullptr;
+    GameActivity_finish(app->activity);
+    for (int i = 0; i < 100 && !app->destroyRequested; ++i) {
+        android_poll_source* source = nullptr;
+        if (ALooper_pollOnce(20, nullptr, nullptr, reinterpret_cast<void**>(&source)) >= 0 && source)
+            source->process(app, source);
+    }
+    _exit(0);
 }
 
 #endif
