@@ -23,11 +23,15 @@
 
 #include "androidmanager.h"
 #include "androidwindow.h"
+#include "assetstamp.h"
 #include <framework/global.h>
 #include <framework/core/eventdispatcher.h>
 #include <framework/core/unzipper.h>
 #include <framework/core/resourcemanager.h>
 #include <framework/sound/soundmanager.h>
+
+#include <filesystem>
+#include <fstream>
 
 AndroidManager g_androidManager;
 
@@ -131,33 +135,65 @@ void AndroidManager::setClipboardText(const std::string& text) {
     env->DeleteLocalRef(jText);
 }
 
+static std::string readAssetRange(AAsset* asset, const off64_t offset, const size_t size) {
+    if (AAsset_seek64(asset, offset, SEEK_SET) < 0)
+        return {};
+
+    std::string out(size, '\0');
+    size_t done = 0;
+    while (done < size) {
+        const int n = AAsset_read(asset, out.data() + done, size - done);
+        if (n <= 0)
+            break;
+        done += n;
+    }
+    out.resize(done);
+    return out;
+}
+
 void AndroidManager::unZipAssetData() {
     std::string destFolder = getAppBaseDir() + "/game_data/";
-
-    const std::filesystem::path initLua { destFolder + "init.lua" };
-    if (std::filesystem::exists(initLua)) {
-        return;
-    }
 
     AAsset* dataAsset = AAssetManager_open(
             m_app->activity->assetManager,
             "data.zip",
-            AASSET_MODE_BUFFER);
+            AASSET_MODE_RANDOM);
 
     if (!dataAsset) {
         g_logger.fatal("Failed to open data.zip from APK assets. Run setup_android_deps.sh to generate it.");
         return;
     }
 
-    auto dataFileLength = AAsset_getLength(dataAsset);
-    char* dataContent = (char *) malloc(dataFileLength + 1);
-    AAsset_read(dataAsset, dataContent, dataFileLength);
-    dataContent[dataFileLength] = '\0';
+    const off64_t dataFileLength = AAsset_getLength64(dataAsset);
+    const size_t tailSize = std::min<off64_t>(dataFileLength, AssetStamp::MAX_TAIL);
+    const std::string tail = readAssetRange(dataAsset, dataFileLength - tailSize, tailSize);
+    const auto centralDirectory = AssetStamp::centralDirectory(tail, dataFileLength);
+    const std::string stamp = centralDirectory
+        ? AssetStamp::make(dataFileLength, readAssetRange(dataAsset, centralDirectory->first, centralDirectory->second))
+        : AssetStamp::make(dataFileLength, tail);
 
-    unzipper::extract(dataContent, dataFileLength, destFolder);
+    const std::filesystem::path stampFile { destFolder + ".data-zip-stamp" };
+    std::string storedStamp;
+    if (std::ifstream in { stampFile })
+        std::getline(in, storedStamp);
 
+    if (!AssetStamp::needsExtract(std::filesystem::exists(destFolder + "init.lua"), storedStamp, stamp)) {
+        AAsset_close(dataAsset);
+        return;
+    }
+
+    // scripts left by an older APK could still be loaded; data/ may hold downloaded assets and is overwritten in place
+    std::error_code ec;
+    std::filesystem::remove_all(destFolder + "modules", ec);
+    std::filesystem::remove_all(destFolder + "mods", ec);
+
+    const std::string dataContent = readAssetRange(dataAsset, 0, dataFileLength);
     AAsset_close(dataAsset);
-    free(dataContent);
+
+    unzipper::extract(dataContent.data(), dataContent.size(), destFolder);
+
+    std::ofstream(stampFile) << stamp << '\n';
+    g_logger.info("Extracted data.zip ({})", stamp);
 }
 
 std::string AndroidManager::getAppBaseDir() {
