@@ -726,10 +726,21 @@ function Host:_ensureBackdrop(profile)
       onMousePress = backdrop.onMousePress,
       onMouseMove = backdrop.onMouseMove,
       onMouseRelease = backdrop.onMouseRelease,
+      onKeyDown = backdrop.onKeyDown,
       onDestroy = backdrop.onDestroy
     },
     handlers = {}
   }
+  -- Android system Back arrives as Escape.
+  binding.handlers.onKeyDown = function(_, keyCode, keyboardModifiers)
+    local host = binding.host
+    if not host or keyCode ~= KeyEscape or
+        keyboardModifiers ~= KeyboardNoModifier then
+      return false
+    end
+    host:close()
+    return true
+  end
   binding.handlers.onMousePress = function(_, position, button)
     local host = binding.host
     if not host then

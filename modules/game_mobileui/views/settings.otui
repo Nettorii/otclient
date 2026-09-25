@@ -119,6 +119,21 @@ MobileSettingsOptionSheet < Panel
     type: verticalBox
     spacing: 4
 
+MobileSettingsSessionButton < MobileSettingsTouchButton
+  border-color: #c98a7a77
+  color: #ffe1d9
+
+  $pressed:
+    border-color: #e3a898bb
+
+MobileSessionMessage < Label
+  height: 56
+  color: #e5edf4
+  font: verdana-11px-antialised
+  text-align: left
+  text-wrap: true
+  phantom: true
+
 MobileSettingsView < Panel
   height: 616
   anchors.left: parent.left
@@ -128,6 +143,15 @@ MobileSettingsView < Panel
   layout:
     type: verticalBox
     spacing: 6
+
+  MobileSettingsSessionButton
+    id: mobileSettingsLogout
+    text: Log out
+
+  MobileSettingsSessionButton
+    id: mobileSettingsExit
+    text: Exit game
+    visible: false
 
   MobileSettingsSectionLabel
     text: Mobile controls

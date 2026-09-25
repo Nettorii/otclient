@@ -250,10 +250,26 @@ function View:_configureCategories()
   end
 end
 
+function View:_configureSession()
+  local logout = self:_widget('mobileSettingsLogout')
+  local exit = self:_widget('mobileSettingsExit')
+  logout:setText(tr('Log out'))
+  exit:setText(tr('Exit game'))
+  exit:setVisible(self.session ~= nil and self.session:canExit())
+  logout:setVisible(self.session ~= nil)
+  logout.onClick = function()
+    return self.session:confirmLogout()
+  end
+  exit.onClick = function()
+    return self.session:confirmExit()
+  end
+end
+
 function View:create(parent)
   self.holder = parent
   self.root = g_ui.createWidget('MobileSettingsView', parent)
   self.root:setWidth(math.max(0, parent:getWidth()))
+  self:_configureSession()
   self.root:setHeight(MobileDrawer.contentHeight(self.root))
   self.holder:setHeight(self.root:getHeight())
   self:_configureMobileControls()
@@ -298,6 +314,7 @@ function MobileSettings.createDescriptor(options)
   local view = setmetatable({
     options = options.options or modules.client_options,
     mobileUi = options.mobileUi or modules.client_mobileui,
+    session = options.session,
     modalGeneration = 0
   }, View)
   return {

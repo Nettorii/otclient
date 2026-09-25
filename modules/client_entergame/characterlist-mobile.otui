@@ -302,6 +302,16 @@ UIWindow
           image-color: #6fbc88
 
       MobileCharacterButton
+        id: exitGameButton
+        anchors.left: autoReconnect.right
+        anchors.top: parent.top
+        margin-left: 8
+        width: 88
+        visible: false
+        !text: tr('Exit')
+        @onClick: EnterGame.exitApp()
+
+      MobileCharacterButton
         id: buttonOk
         visible: false
         anchors.right: buttonCancel.left

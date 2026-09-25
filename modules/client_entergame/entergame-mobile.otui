@@ -53,6 +53,16 @@ UIWindow
       size: 176 48
       @onClick: EnterGame.toggleConnectionSettings()
 
+    QtButton
+      id: exitGameButton
+      !text: tr('Exit')
+      anchors.top: parent.top
+      anchors.right: connectionSettingsButton.left
+      margin-right: 8
+      size: 72 48
+      visible: false
+      @onClick: EnterGame.exitApp()
+
     Label
       id: emailLabel
       !text: tr('Acc Name:')

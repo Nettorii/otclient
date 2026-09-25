@@ -986,6 +986,7 @@ function CharacterList.create(characters, account, otui)
         surface:setHeight(math.min(620, profile.usableHeight - 24))
         characterTouchScroller = MobileScrollGesture.create(characterListScrollBar)
         characterTouchScroller.bind(characterList)
+        windowChild('exitGameButton'):setVisible(EnterGame.canExitApp())
     end
 
     characterList.onChildFocusChange = function(self, focusedChild, oldFocusedChild)
@@ -1321,6 +1322,21 @@ end
 
 function CharacterList.isIntentionalExitPending()
     return intentionalExit or suppressWorldErrors
+end
+
+-- g_game never emits onLogout, so a v2 logout marks itself before safeLogout;
+-- otherwise the server closing the connection looks like a lost connection.
+function CharacterList.beginIntentionalLogout()
+    onLogout()
+end
+
+function CharacterList.abortIntentionalLogout()
+    if not g_game.isOnline() or reconnectActive then
+        return false
+    end
+    intentionalExit = false
+    suppressWorldErrors = false
+    return true
 end
 
 function CharacterList.cancelReconnect(expectedGeneration)

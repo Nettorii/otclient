@@ -230,6 +230,7 @@ function EnterGame.init()
         local surface = getEnterGameChild('loginSurface')
         surface:setWidth(math.min(540, profile.usableWidth - 24))
         surface:setHeight(math.min(316, profile.usableHeight - 24))
+        getEnterGameChild('exitGameButton'):setVisible(EnterGame.canExitApp())
     end
     Keybind.new("Misc.", "Change Character", "Ctrl+G", "")
     Keybind.bind("Misc.", "Change Character", {
@@ -1019,6 +1020,16 @@ end
 function EnterGame.setServerInfo(message)
     local label = getEnterGameChild('serverInfoLabel')
     label:setText(message)
+end
+
+-- The browser tab cannot close itself, so only the Android app offers Exit.
+function EnterGame.canExitApp()
+    return g_platform.isMobile() and not g_platform.isBrowser()
+end
+
+function EnterGame.exitApp()
+    g_game.cancelLogin()
+    g_app.exit()
 end
 
 function EnterGame.toggleConnectionSettings()

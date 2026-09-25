@@ -33,6 +33,7 @@ local currentLayout
 local lastShellDockMessage
 local pinchGesture
 local creatureInformationAboveHead = false
+local session
 
 local SHELL_DOCK_BUTTONS = 3
 
@@ -675,6 +676,16 @@ function foregroundOwner:onForegroundLost()
   synchronizeInputTargets()
 end
 
+local function isGameplayIdle()
+  local state, owner = modules.client_mobileui.getForeground()
+  return gameActive and state == 'gameplay' and owner == foregroundOwner and
+    not isChatOpen() and getOpenDrawerId() == nil and not isReconnecting()
+end
+
+local function onSystemBack()
+  return session ~= nil and session:handleSystemBack()
+end
+
 local function onGameStart()
   cancelOwnedGestures()
   local enterGame = modules.client_entergame
@@ -713,6 +724,9 @@ end
 
 local function onGameEnd()
   cancelOwnedGestures()
+  if session then
+    session:onGameEnd()
+  end
   if pinchGesture then
     pinchGesture:reset()
   end
@@ -1236,6 +1250,10 @@ initializeGameplay = function(initialProfile, atomicProfile)
     onShellCreateError = showViewCreationFallback
   })
   configureDrawerHandle(drawerHandle)
+  session = MobileSession.create({
+    onBeforeLogout = closeDrawer,
+    isGameplayIdle = isGameplayIdle
+  })
   registerPlaceholderDrawerViews()
   if MobileInventory then
     replacePlaceholderDrawerView('inventory',
@@ -1259,7 +1277,7 @@ initializeGameplay = function(initialProfile, atomicProfile)
   end
   if MobileSettings then
     replacePlaceholderDrawerView('settings',
-      MobileSettings.createDescriptor())
+      MobileSettings.createDescriptor({ session = session }))
   end
 
   gameActive = false
@@ -1354,6 +1372,7 @@ function init()
   g_ui.importStyle('views/battle.otui')
   g_ui.importStyle('views/vip.otui')
   g_ui.importStyle('views/settings.otui')
+  g_keyboard.bindKeyDown('Escape', onSystemBack)
 
   reconnectAdapter = MobileReconnecting.create({
     cancelGestures = cancelOwnedGestures,
@@ -1384,6 +1403,11 @@ function terminate()
     return
   end
   terminating = true
+  g_keyboard.unbindKeyDown('Escape', onSystemBack)
+  if session then
+    session:terminate()
+    session = nil
+  end
   if creatureInformationAboveHead then
     g_app.setCreatureInformationAboveHead(false)
     creatureInformationAboveHead = false
