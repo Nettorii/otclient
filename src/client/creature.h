@@ -181,6 +181,11 @@ minHeight,
     void setWidgetInformation(const UIWidgetPtr& info);
     UIWidgetPtr getWidgetInformation() { return m_widgetInformation; }
 
+    // Screen rects from the last drawInformation call: the name and bar rows actually drawn, and
+    // the nominal sprite box they were laid out against. Used by layout probes.
+    Rect getInformationRect() const { return m_informationRect; }
+    Rect getInformationCreatureRect() const { return m_informationCreatureRect; }
+
     void setNameShader(const std::string& name) { m_nameShader = name; }
     std::string getNameShader() { return m_nameShader; }
 
@@ -316,6 +321,8 @@ private:
     Color m_timedSquareColor{ Color::white };
     Color m_staticSquareColor{ Color::white };
     Color m_informationColor{ Color::white };
+    Rect m_informationRect;
+    Rect m_informationCreatureRect;
 
     Bounce m_bounce;
 

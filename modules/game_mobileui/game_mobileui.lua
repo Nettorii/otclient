@@ -32,6 +32,7 @@ local zoomInButton
 local currentLayout
 local lastShellDockMessage
 local pinchGesture
+local creatureInformationAboveHead = false
 
 local SHELL_DOCK_BUTTONS = 3
 
@@ -1336,6 +1337,12 @@ function init()
     return
   end
 
+  -- phone map tiles are small, so bars drawn over the sprite would hide the player
+  if g_app.setCreatureInformationAboveHead then
+    g_app.setCreatureInformationAboveHead(true)
+    creatureInformationAboveHead = true
+  end
+
   g_ui.importStyle('styles.otui')
   g_ui.importStyle('drawer.otui')
   g_ui.importStyle('chat.otui')
@@ -1377,6 +1384,10 @@ function terminate()
     return
   end
   terminating = true
+  if creatureInformationAboveHead then
+    g_app.setCreatureInformationAboveHead(false)
+    creatureInformationAboveHead = false
+  end
   if unsubscribePortrait then
     unsubscribePortrait()
     unsubscribePortrait = nil

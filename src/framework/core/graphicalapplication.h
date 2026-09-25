@@ -112,6 +112,9 @@ public:
     float getCreatureInformationScale() const { return m_creatureInformationScale; }
     void setCreatureInformationScale(const float v) { m_creatureInformationScale = v; }
 
+    bool isCreatureInformationAboveHead() const { return m_creatureInformationAboveHead; }
+    void setCreatureInformationAboveHead(const bool v) { m_creatureInformationAboveHead = v; }
+
     float getAnimatedTextScale() const { return m_animatedTextScale; }
     void setAnimatedTextScale(const float v) { m_animatedTextScale = v; }
 
@@ -149,6 +152,7 @@ private:
     bool m_drawEffectOnTop{ false };
     bool m_drawText{ true };
     bool m_loadingAsyncTexture{ false };
+    bool m_creatureInformationAboveHead{ false };
 
     float m_creatureInformationScale{ DEFAULT_DISPLAY_DENSITY };
     float m_animatedTextScale{ DEFAULT_DISPLAY_DENSITY };

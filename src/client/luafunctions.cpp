@@ -692,6 +692,8 @@ void Client::registerLuaFunctions()
     g_lua.bindClassMemberFunction<Creature>("sendTyping", &Creature::sendTyping);
     g_lua.bindClassMemberFunction<Creature>("setTypingIconTexture", &Creature::setTypingIconTexture);
     g_lua.bindClassMemberFunction<Creature>("getWidgetInformation", &Creature::getWidgetInformation);
+    g_lua.bindClassMemberFunction<Creature>("getInformationRect", &Creature::getInformationRect);
+    g_lua.bindClassMemberFunction<Creature>("getInformationCreatureRect", &Creature::getInformationCreatureRect);
     g_lua.bindClassMemberFunction<Creature>("setWidgetInformation", &Creature::setWidgetInformation);
     g_lua.bindClassMemberFunction<Creature>("isFullHealth", &Creature::isFullHealth);
     g_lua.bindClassMemberFunction<Creature>("isCovered", &Creature::isCovered);

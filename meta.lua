@@ -3426,6 +3426,12 @@ function g_app.isScaled() end
 ---@param value number
 function g_app.setCreatureInformationScale(value) end
 
+---@param value boolean
+function g_app.setCreatureInformationAboveHead(value) end
+
+---@return boolean
+function g_app.isCreatureInformationAboveHead() end
+
 ---@param value number
 function g_app.setAnimatedTextScale(value) end
 

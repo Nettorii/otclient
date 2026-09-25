@@ -60,6 +60,7 @@ function(otclient_add_gtest TARGET_NAME)
     gtest_discover_tests(${TARGET_NAME})
 endfunction()
 
+add_subdirectory(client)
 add_subdirectory(map)
 add_subdirectory(stdext)
 add_subdirectory(otml)

@@ -1,0 +1,5 @@
+set(CREATURE_INFORMATION_LAYOUT_TEST_SOURCES
+    ${CMAKE_CURRENT_SOURCE_DIR}/creatureinformationlayout_test.cpp
+)
+
+otclient_add_gtest(otclient_creature_information_layout_tests ${CREATURE_INFORMATION_LAYOUT_TEST_SOURCES})

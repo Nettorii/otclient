@@ -23,6 +23,7 @@
 #include "creature.h"
 
 #include "animator.h"
+#include "creatureinformationlayout.h"
 #include "attachedeffect.h"
 #include "client/const.h"
 #include "game.h"
@@ -163,6 +164,26 @@ void Creature::draw(const Rect& destRect, const uint8_t size, const bool center)
     g_drawPool.releaseFrameBuffer(out);
 }
 
+// Number of bar rows drawInformation stacks below the health row's top. When the health bar is
+// hidden but harmony is shown, harmony still starts one row down, leaving the health row empty.
+static int informationBarRows(const Creature& creature, const int drawFlags)
+{
+    int rows = 0;
+    if ((drawFlags & Otc::DrawBars) && (g_game.getClientVersion() >= 1100 ? !creature.isNpc() : true)) {
+        rows = 1;
+        if (drawFlags & Otc::DrawManaBar && creature.isLocalPlayer()) {
+            if (const auto& player = g_game.getLocalPlayer())
+                rows += player->isMage() && player->getMaxManaShield() > 0 ? 2 : 1;
+        }
+    }
+
+    if (drawFlags & Otc::DrawHarmony && creature.isLocalPlayer() && g_game.getFeature(Otc::GameVocationMonk)) {
+        if (const auto& player = g_game.getLocalPlayer(); player && player->isMonk())
+            rows = std::max(rows, 1) + 2;
+    }
+    return rows;
+}
+
 void Creature::drawInformation(const MapPosInfo& mapRect, const Point& dest, const int drawFlags)
 {
     static constexpr Color
@@ -204,6 +225,7 @@ void Creature::drawInformation(const MapPosInfo& mapRect, const Point& dest, con
     const int cropSizeText = g_gameConfig.isAdjustCreatureInformationBasedCropSize() ? getExactSize() : 12;
     const int cropSizeBackGround = g_gameConfig.isAdjustCreatureInformationBasedCropSize() ? cropSizeText - nameSize.height() : 0;
 
+    const Point screenAnchor = p;
     const bool isScaled = g_app.getCreatureInformationScale() != DEFAULT_DISPLAY_DENSITY;
     if (isScaled) {
         p.scale(g_app.getCreatureInformationScale());
@@ -212,27 +234,66 @@ void Creature::drawInformation(const MapPosInfo& mapRect, const Point& dest, con
     auto backgroundRect = Rect(p.x - (15.5), p.y - cropSizeBackGround, 31, 4);
     auto textRect = Rect(p.x - nameSize.width() / 2.0, p.y - cropSizeText, nameSize);
 
-    constexpr int minNameBarSpacing = 2;
-    const int currentSpacing = backgroundRect.top() - textRect.bottom();
-    if (currentSpacing < minNameBarSpacing) {
-        backgroundRect.moveTop(textRect.bottom() + minNameBarSpacing);
+    const int barRows = informationBarRows(*this, drawFlags);
+    if (g_app.isCreatureInformationAboveHead()) {
+        // p and the pool are in scaled space, so the map bounds must be too
+        Rect bounds = parentRect;
+        if (isScaled) {
+            const float scale = g_app.getCreatureInformationScale();
+            bounds = Rect(Point(parentRect.topLeft()).scale(scale), Point(parentRect.bottomRight()).scale(scale));
+        }
+
+        // crop-size mode already raises the name by (cropSizeText - 12) over the default layout
+        const auto layout = CreatureInformationAboveHead::compute(p.y, cropSizeText - 12,
+                                                                  (drawFlags & Otc::DrawNames) ? nameSize.height() : 0,
+                                                                  barRows, bounds.top());
+        textRect.moveTop(layout.textTop);
+        backgroundRect.moveTop(layout.barsTop);
+        textRect.bind(bounds);
+        backgroundRect.bind(bounds);
+    } else {
+        constexpr int minNameBarSpacing = 2;
+        const int currentSpacing = backgroundRect.top() - textRect.bottom();
+        if (currentSpacing < minNameBarSpacing) {
+            backgroundRect.moveTop(textRect.bottom() + minNameBarSpacing);
+        }
+
+        if (!isScaled) {
+            backgroundRect.bind(parentRect);
+            textRect.bind(parentRect);
+        }
+
+        // distance them
+        uint8_t offset = 12 * mapRect.scaleFactor;
+        if (isLocalPlayer()) {
+            offset *= 2 * mapRect.scaleFactor;
+        }
+
+        if (textRect.top() == parentRect.top())
+            backgroundRect.moveTop(textRect.top() + offset);
+        if (backgroundRect.bottom() == parentRect.bottom())
+            textRect.moveTop(backgroundRect.top() - offset);
     }
 
-    if (!isScaled) {
-        backgroundRect.bind(parentRect);
-        textRect.bind(parentRect);
-    }
+    {
+        const float scale = isScaled ? g_app.getCreatureInformationScale() : 1.f;
+        const auto toScreen = [scale](const Rect& r) {
+            return Rect(Point(std::round(r.left() * scale), std::round(r.top() * scale)),
+                        Point(std::round((r.right() + 1) * scale) - 1, std::round((r.bottom() + 1) * scale) - 1));
+        };
+        Rect info = (drawFlags & Otc::DrawNames) ? textRect : Rect();
+        if (barRows > 0) {
+            const Rect rows(backgroundRect.left(), backgroundRect.top(), backgroundRect.width(), CreatureInformationAboveHead::stackHeight(barRows));
+            info = info.isNull() ? rows : info.united(rows);
+        }
+        m_informationRect = info.isNull() ? Rect() : toScreen(info);
 
-    // distance them
-    uint8_t offset = 12 * mapRect.scaleFactor;
-    if (isLocalPlayer()) {
-        offset *= 2 * mapRect.scaleFactor;
+        const int spriteSize = g_gameConfig.getSpriteSize();
+        m_informationCreatureRect = Rect(screenAnchor.x - spriteSize / 2 * mapRect.scaleFactor * mapRect.horizontalStretchFactor,
+                                         screenAnchor.y + 2 * mapRect.scaleFactor * mapRect.verticalStretchFactor,
+                                         spriteSize * mapRect.scaleFactor * mapRect.horizontalStretchFactor,
+                                         spriteSize * mapRect.scaleFactor * mapRect.verticalStretchFactor);
     }
-
-    if (textRect.top() == parentRect.top())
-        backgroundRect.moveTop(textRect.top() + offset);
-    if (backgroundRect.bottom() == parentRect.bottom())
-        textRect.moveTop(backgroundRect.top() - offset);
 
     // health rect is based on background rect, so no worries
     Rect healthRect = backgroundRect.expanded(-1);

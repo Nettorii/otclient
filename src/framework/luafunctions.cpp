@@ -390,6 +390,8 @@ void Application::registerLuaFunctions()
 
     g_lua.bindSingletonFunction("g_app", "setHUDScale", &GraphicalApplication::setHUDScale, &g_app);
     g_lua.bindSingletonFunction("g_app", "setCreatureInformationScale", &GraphicalApplication::setCreatureInformationScale, &g_app);
+    g_lua.bindSingletonFunction("g_app", "setCreatureInformationAboveHead", &GraphicalApplication::setCreatureInformationAboveHead, &g_app);
+    g_lua.bindSingletonFunction("g_app", "isCreatureInformationAboveHead", &GraphicalApplication::isCreatureInformationAboveHead, &g_app);
     g_lua.bindSingletonFunction("g_app", "setAnimatedTextScale", &GraphicalApplication::setAnimatedTextScale, &g_app);
     g_lua.bindSingletonFunction("g_app", "setStaticTextScale", &GraphicalApplication::setStaticTextScale, &g_app);
     g_lua.bindSingletonFunction("g_app", "doScreenshot", &GraphicalApplication::doScreenshot, &g_app);
